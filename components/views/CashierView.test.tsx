@@ -172,7 +172,7 @@ vi.mock("@/lib/api/payments", async (orig) => ({
   ...(await orig<any>()),
   listPaymentMethods: () => listPaymentMethods(),
   getRegisterSummary: () => getRegisterSummary(),
-  listRegisterPayments: () => listRegisterPayments(),
+  listRegisterPayments: (...args: unknown[]) => (listRegisterPayments as (...a: unknown[]) => unknown)(...args),
   payOrder: (input: unknown) => payOrder(input),
   splitOrder: async () => ({}),
   undoSplit: async () => ({}),
@@ -454,13 +454,15 @@ describe("Resumen del turno (S1: no duplicate register load, one summary query)"
 
 describe("Transacciones reprint (H-069)", () => {
   it("reprints a paid order that is no longer in the open list by reading it by id", async () => {
-    listRegisterPayments.mockResolvedValueOnce([
+    // Transacciones lists the payments, then the reprint reads them again from the server.
+    const paidRows = [
       {
         id: "p-9", orderId: "o-paid-1", cashRegisterId: "reg-1", cashierProfileId: "c-1",
         amountDue: 7_140, tipAmount: 0, totalCharged: 7_140, changeGiven: 0, idempotencyKey: "k9", createdAt: "2026-10-07T13:00:00.000Z",
         tenders: [],
       },
-    ] as never)
+    ] as never
+    listRegisterPayments.mockResolvedValueOnce(paidRows).mockResolvedValueOnce(paidRows)
     getById.mockResolvedValueOnce(
       dbRow({ id: "o-paid-1", status: "paid", table_id: null, order_type: "takeaway", customer_name: "Ana María", waiter_id: null }),
     )
@@ -471,6 +473,56 @@ describe("Transacciones reprint (H-069)", () => {
     const invoice = await screen.findByRole("dialog")
     expect(getById).toHaveBeenCalledWith("o-paid-1")
     expect(invoice).toHaveTextContent("Para llevar · Ana María")
+  })
+})
+
+describe("reprint of a paid order (H-069)", () => {
+  it("prints the payment's method from the server, not Efectivo", async () => {
+    // Transacciones lists the payments, then the reprint reads them again from the server.
+    const paidRows = [
+      {
+        id: "p-9", orderId: "o-paid-1", cashRegisterId: "reg-1", cashierProfileId: "c-1",
+        amountDue: 7_140, tipAmount: 0, totalCharged: 7_140, changeGiven: 0, idempotencyKey: "k9", createdAt: "2026-10-07T13:00:00.000Z",
+        tenders: [{ id: "t-9", paymentId: "p-9", lineNo: 1, paymentMethodId: "m-nequi", methodCode: "nequi", methodKind: "electronic", amount: 7_140, cashReceived: null, reference: null }],
+      },
+    ] as never
+    listRegisterPayments.mockResolvedValueOnce(paidRows).mockResolvedValueOnce(paidRows)
+    getById.mockResolvedValueOnce(
+      dbRow({ id: "o-paid-1", status: "paid", table_id: null, order_type: "takeaway", customer_name: "Ana María", waiter_id: null }),
+    )
+    renderCashier()
+    await screen.findByText("Mesa 1")
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Resumen del turno" }), { button: 0, ctrlKey: false })
+    fireEvent.click(await screen.findByRole("button", { name: "o-paid-1" }))
+    const invoice = await screen.findByRole("dialog")
+    expect(invoice).not.toHaveTextContent(/Forma de pago:?\s*Efectivo/)
+    expect(invoice).toHaveTextContent(/Nequi/)
+  })
+})
+
+describe("reprint after the register closed (H-069)", () => {
+  it("reads the closed shift's payment (lastClose) and prints the server invoice", async () => {
+    const paidRows = [
+      {
+        id: "p-9", orderId: "o-paid-1", cashRegisterId: "reg-closed", cashierProfileId: "c-1",
+        amountDue: 7_140, tipAmount: 500, totalCharged: 7_640, changeGiven: 0, idempotencyKey: "k9", createdAt: "2026-10-07T13:00:00.000Z",
+        tenders: [{ id: "t-9", paymentId: "p-9", lineNo: 1, paymentMethodId: "m-nequi", methodCode: "nequi", methodKind: "electronic", amount: 7_640, cashReceived: null, reference: null }],
+      },
+    ] as never
+    listRegisterPayments.mockResolvedValueOnce(paidRows).mockResolvedValueOnce(paidRows).mockResolvedValueOnce(paidRows)
+    getById.mockResolvedValueOnce(
+      dbRow({ id: "o-paid-1", status: "paid", table_id: null, order_type: "takeaway", customer_name: "Ana María", waiter_id: null }),
+    )
+    renderCashier()
+    await screen.findByText("Mesa 1")
+    useCashRegisterStore.setState({ currentRegister: null, lastClose: { cashRegisterId: "reg-closed" } as never })
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Resumen del turno" }), { button: 0, ctrlKey: false })
+    fireEvent.click(await screen.findByRole("button", { name: "o-paid-1" }))
+    const invoice = await screen.findByRole("dialog")
+    expect(listRegisterPayments).toHaveBeenLastCalledWith(["reg-closed"])
+    expect(invoice).toHaveTextContent("Para llevar · Ana María")
+    expect(invoice).toHaveTextContent(/Nequi/)
+    expect(invoice).not.toHaveTextContent(/Forma de pago:?\s*Efectivo/)
   })
 })
 

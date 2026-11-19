@@ -21,7 +21,7 @@ import { fetchSession, profileFromSession, type Session } from "@/lib/api/auth"
 import { viewForRole } from "@/lib/auth/roles"
 import { startupLoadsForRole, startupRole, type ShellLoad } from "@/lib/shell/startup-loads"
 import { onAuthEvent } from "@/lib/shell/auth-events"
-import { CART_STORAGE_KEY } from "@/store/useCartStore"
+import { CART_STORAGE_KEY, useCartStore } from "@/store/useCartStore"
 import { log } from "@/lib/log"
 import type { ProfileRole } from "@/types"
 
@@ -106,14 +106,20 @@ export default function Home() {
     setIsAuthenticated(true)
   }
 
-  const clearSession = () => {
-    // H-052: unsent table carts are saved on the device; a session that ends
-    // (expiry or a refused refresh) must not hand them to the next user.
+  // H-052: unsent table carts are saved on the device. When the session really
+  // ends (a refused refresh, or a check that answers "no session") they must
+  // not reach the next user, in storage or in memory. A network failure or a
+  // timeout is not a session end: the flaky-phone reload keeps its cart.
+  const forgetSavedCarts = () => {
+    useCartStore.setState({ cartItems: {} })
     try {
       window.localStorage.removeItem(CART_STORAGE_KEY)
     } catch {
       // Storage unavailable: nothing was saved either.
     }
+  }
+
+  const clearSession = () => {
     setTerminalSession(null)
     setAuthProfile(null)
     setSelectedProfile(null)
@@ -134,6 +140,7 @@ export default function Home() {
       // While the initial check is in flight, its refused refresh belongs to
       // the pre-login cookies; once it settles, every refusal is genuine.
       if (checkPending && isStale()) return
+      forgetSavedCarts()
       clearSession()
     })
 
@@ -162,7 +169,10 @@ export default function Home() {
           applySession(session)
           // As on dev, the role view shows while the startup loads run.
           setIsLoading(false)
-        } else clearSession()
+        } else {
+          forgetSavedCarts()
+          clearSession()
+        }
       })
       .catch((error: unknown) => {
         log.error("Error al resolver la sesión:", { error: String(error) })
