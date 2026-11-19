@@ -59,7 +59,7 @@ export function NewDeliveryDialog({ open, onOpenChange }: NewDeliveryDialogProps
         <SheetHeader className="space-y-0.5 border-b border-line px-4 py-3 pr-14 text-left md:px-6">
           <SheetTitle className="text-lg">Nuevo domicilio</SheetTitle>
           <SheetDescription className="text-xs">
-            Captura el cliente, los productos y el domicilio. El servidor recalcula los precios y la propina.
+            Captura el cliente, los productos y el domicilio. El servidor recalcula los precios.
           </SheetDescription>
         </SheetHeader>
         {open && (

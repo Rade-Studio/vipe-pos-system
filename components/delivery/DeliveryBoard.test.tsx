@@ -451,3 +451,21 @@ describe("DeliveryBoard — Entregado asks first (H-072)", () => {
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument()
   })
 })
+
+describe("DeliveryBoard — courier on the card (H-078)", () => {
+  it("names the assigned courier on the card, and nothing when none is assigned", async () => {
+    listActiveDeliveries.mockResolvedValue([
+      // Both in the first tab so jsdom (no width, tab layout) shows them together.
+      boardRow({ order_id: "d-1", delivery_status: "received", courier_id: "k-1" }),
+      boardRow({ order_id: "d-2", customer_name: "Beto Gil", delivery_status: "received", courier_id: null }),
+    ])
+    listCouriers.mockResolvedValue([
+      { id: "k-1", name: "Juan Camilo Ospina", phone: null, isActive: false, createdAt: "", updatedAt: "" },
+    ])
+    renderBoard(makeClient())
+    const ana = await screen.findByRole("article", { name: /^Ana Ruiz/ })
+    await waitFor(() => expect(ana).toHaveTextContent("Lo lleva Juan Camilo Ospina"))
+    const beto = screen.getByRole("article", { name: /^Beto Gil/ })
+    expect(beto).not.toHaveTextContent("Lo lleva")
+  })
+})

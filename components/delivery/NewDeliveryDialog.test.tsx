@@ -116,3 +116,10 @@ describe("NewDeliveryDialog — no blank form while the suggested fee loads", ()
     expect(fetchConfig).toHaveBeenCalledTimes(1)
   })
 })
+describe("NewDeliveryDialog — copy (H-077)", () => {
+  it("does not promise a tip in the subtitle", () => {
+    renderDialog(makeClient())
+    expect(screen.getByText("Captura el cliente, los productos y el domicilio. El servidor recalcula los precios.")).toBeInTheDocument()
+    expect(screen.queryByText(/propina/i)).not.toBeInTheDocument()
+  })
+})

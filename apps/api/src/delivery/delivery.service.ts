@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { ForbiddenException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { sql } from '@vipe/db';
 import type { z } from 'zod';
 import type { CallerProfile } from '../auth/auth-context';
@@ -174,7 +174,18 @@ export class DeliveryService {
     return result.map((r) => toCourier(r.row));
   }
 
+  /** H-038: an active courier other than `exceptId` already using `phone` answers 409 (no unique index: older rows may repeat). */
+  private async refuseActivePhoneDuplicate(phone: string | null | undefined, exceptId: string | null): Promise<void> {
+    if (!phone) return;
+    const found = await rows<{ name: string }>(this.uow, sql`
+      SELECT co.name FROM public.couriers co
+       WHERE co.is_active AND co.phone = ${phone} AND co.id IS DISTINCT FROM ${exceptId}::uuid
+       ORDER BY co.name LIMIT 1`);
+    if (found.length > 0) throw new ConflictException(`${found[0].name} ya usa este teléfono. Usa otro número.`);
+  }
+
   async createCourier(input: z.infer<typeof createCourierSchema>): Promise<Courier> {
+    await this.refuseActivePhoneDuplicate(input.phone, null);
     const pairs = definedColumns({ name: input.name, phone: input.phone ?? null });
     return toCourier(await one(this.uow, sql`
       INSERT INTO public.couriers ${insertColumns(pairs)} RETURNING to_jsonb(couriers) AS row`, 'row', 'Courier not found'));
@@ -188,6 +199,7 @@ export class DeliveryService {
     if (caller.role === 'delivery_operator' && ADMIN_ONLY_COURIER_FIELDS.some((field) => patch[field] !== undefined)) {
       throw new ForbiddenException('A delivery operator may only change isActive');
     }
+    await this.refuseActivePhoneDuplicate(patch.phone, id);
     const pairs = definedColumns({ name: patch.name, phone: patch.phone, is_active: patch.isActive });
     return toCourier(await one(this.uow, sql`
       UPDATE public.couriers SET ${setList(pairs)} WHERE id = ${id} RETURNING to_jsonb(couriers) AS row`, 'row', 'Courier not found'));

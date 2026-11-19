@@ -23,7 +23,7 @@
 
 import { lineKey, type LineModifier } from '@/lib/modifiers/rules'
 import type { CartCombo, PreviewDraft } from '@/lib/promotions/waiter'
-import { normalizePhone } from './phone'
+import { COLOMBIAN_PHONE_ERROR, normalizeColombianPhone, normalizePhone } from './phone'
 import { formatCurrency } from '@/utils/helpers'
 import type {
   CreateDeliveryAddressInput,
@@ -263,7 +263,8 @@ export function orderDraftReducer(state: OrderDraft, action: OrderDraftAction): 
           neighborhood: action.neighborhood,
           reference: action.reference,
           label: action.label,
-          save: state.addressChoice.kind === 'new' ? state.addressChoice.save : false,
+          // H-077: a new address is saved for next time unless the operator unticks it.
+          save: state.addressChoice.kind === 'new' ? state.addressChoice.save : true,
         },
       }
 
@@ -392,7 +393,7 @@ export interface DraftValidationIssue {
  * silently blocks the order.
  *
  * Rules (each maps to a server-side invariant):
- *   - phone must normalize to 7..15 (matches server CHECK)
+ *   - phone: a new customer needs a Colombian mobile or landline (H-074; the API enforces it too)
  *   - customerName required for a NEW customer (server CHECK enforces)
  *   - addressChoice must be existing{id} or new{addressLine non-empty}
  *   - cartLines must be non-empty (server CHECK enforces 1..99)
@@ -417,8 +418,10 @@ export function validateDraft(draft: OrderDraft, taxPct = 8, pricing?: DraftPric
   const issues: DraftValidationIssue[] = []
 
   // phone
-  if (normalizeDraftPhone(draft) === null) {
-    issues.push({ field: 'phone', message: 'Ingresa un teléfono válido (7 a 15 dígitos)' })
+  if (draft.phoneInput.trim().length === 0) {
+    issues.push({ field: 'phone', message: 'Ingresa el teléfono del cliente' })
+  } else if (normalizeDraftPhone(draft) === null) {
+    issues.push({ field: 'phone', message: COLOMBIAN_PHONE_ERROR })
   }
 
   // customerName — required unless the lookup resolved an existing
@@ -471,26 +474,15 @@ export function validateDraft(draft: OrderDraft, taxPct = 8, pricing?: DraftPric
 }
 
 /**
- * Mirror of `normalizePhone` from `./phone` but tolerant of a
- * possibly-empty draft (returns null on empty input rather than
- * throwing — the validator only cares "is this a valid phone?").
+ * The draft's phone: an existing customer keeps the stored rule (7..15
+ * digits, `normalizePhone`), so a registry row older than the Colombian rule
+ * still resolves; a new customer must be a Colombian mobile or landline
+ * (H-074, `normalizeColombianPhone`).
  */
 function normalizeDraftPhone(draft: OrderDraft): string | null {
-  // If the registry has an existing phone, validate it directly.
-  const source = draft.phoneInput
-  const trimmed = (source ?? '').trim()
-  if (trimmed.length === 0) return null
-  const digits = trimmed.replace(/\D/g, '')
-  if (digits.length === 0) return null
-  if (
-    digits.startsWith('57') &&
-    digits.length === 12 &&
-    digits.charAt(2) === '3'
-  ) {
-    return digits.slice(2)
-  }
-  if (digits.length < 7 || digits.length > 15) return null
-  return digits
+  const source = (draft.phoneInput ?? '').trim()
+  if (source.length === 0) return null
+  return draft.lookup.kind === 'existing' ? normalizePhone(source) : normalizeColombianPhone(source)
 }
 
 // -----------------------------------------------------------

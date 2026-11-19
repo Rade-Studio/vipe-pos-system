@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { formatCurrency } from '@/utils/helpers'
+import { COLOMBIAN_PHONE_ERROR } from './phone'
 import {
   COURIERS_QUERY_KEY,
   DEFAULT_FEE_CONFIG_KEY,
@@ -41,13 +43,19 @@ describe('validateCourierInput', () => {
     ])
   })
 
-  it('rejects a phone that does not normalize to 7..15 digits', () => {
-    expect(validateCourierInput({ name: 'Ana', phone: '12345' })).toEqual([
-      'El teléfono debe tener entre 7 y 15 dígitos',
-    ])
-    expect(validateCourierInput({ name: 'Ana', phone: 'abc' })).toEqual([
-      'El teléfono debe tener entre 7 y 15 dígitos',
-    ])
+  it('rejects a phone that is not a Colombian mobile or landline (H-038)', () => {
+    for (const phone of ['12345', 'abc', '1234567', '2101234567', '123456789012']) {
+      expect(validateCourierInput({ name: 'Ana', phone })).toEqual([COLOMBIAN_PHONE_ERROR])
+    }
+  })
+
+  it('accepts a Colombian landline', () => {
+    expect(validateCourierInput({ name: 'Ana', phone: '601 123 4567' })).toEqual([])
+  })
+
+  it('keeps an unchanged stored phone that predates the Colombian rule', () => {
+    expect(validateCourierInput({ name: 'Ana', phone: '1234567' }, '1234567')).toEqual([])
+    expect(validateCourierInput({ name: 'Ana', phone: '7654321' }, '1234567')).toEqual([COLOMBIAN_PHONE_ERROR])
   })
 
   it('reports every error at once', () => {
@@ -117,6 +125,11 @@ describe('parseDefaultFeeInput', () => {
 
   it('rejects values beyond the safe integer range', () => {
     expect(parseDefaultFeeInput('99999999999999999').ok).toBe(false)
+  })
+
+  it('caps the suggested fee at the delivery fee limit (H-038)', () => {
+    expect(parseDefaultFeeInput('200.000')).toEqual({ ok: true, value: 200000 })
+    expect(parseDefaultFeeInput('200001')).toEqual({ ok: false, error: `El domicilio no puede superar ${formatCurrency(200000)}` })
   })
 
   it('uses the business_config key the delivery dialog reads', () => {

@@ -119,7 +119,7 @@ describe("DeliveryConsole requests (T25)", () => {
   it("create, new customer on cash: the body is the one sent before T25", async () => {
     await fillAndSubmit(false)
     expect(createBodies()).toEqual([
-      `{"customer":{"phone":"3001234567","name":"Luis"},"address":{"addressLine":"Calle 1 # 2-3","neighborhood":null,"reference":null,"label":null,"save":false},${ITEMS},"deliveryFee":4000,"paymentMode":"cash_on_delivery","cashChangeFor":null,"notes":null}`,
+      `{"customer":{"phone":"3001234567","name":"Luis"},"address":{"addressLine":"Calle 1 # 2-3","neighborhood":null,"reference":null,"label":null,"save":true},${ITEMS},"deliveryFee":4000,"paymentMode":"cash_on_delivery","cashChangeFor":null,"notes":null}`,
     ])
   })
   it("create, prepaid without a channel: no prepaidMethodId", async () => {
@@ -133,7 +133,7 @@ describe("DeliveryConsole requests (T25)", () => {
     expect(createBodies()).toEqual([`${EXISTING_PREPAID},"prepaidMethodId":"m-nequi"}`])
   })
 
-  it("the last address, not saved, is sent as a new address", async () => {
+  it("the last address, not in the registry, is sent as a new address and saved by default (H-077)", async () => {
     env.customer = { ...existing, history: { ordersCount: 14, lastOrderAt: new Date(Date.now() - 6 * 86_400_000 - 60_000).toISOString(), lastAddress: { addressLine: "Cl 99 # 1-1", neighborhood: "Belén", reference: null } } }
     render(<QueryClientProvider client={client()}><DeliveryOrderForm suggestedFee={4000} taxPct={0} onSubmitted={vi.fn()} /></QueryClientProvider>)
     fireEvent.change(screen.getByLabelText("Teléfono"), { target: { value: "3001234567" } })
@@ -148,7 +148,7 @@ describe("DeliveryConsole requests (T25)", () => {
     await click(screen.getByRole("button", { name: "Crear domicilio" }))
     await waitFor(() => expect(env.current.some((r) => r.method === "POST" && r.url === "/api/delivery/orders")).toBe(true))
     expect(createBodies()).toEqual([
-      `{"customer":{"id":"c-1"},"address":{"addressLine":"Cl 99 # 1-1","neighborhood":"Belén","reference":null,"label":null,"save":false},${ITEMS},"deliveryFee":4000,"paymentMode":"cash_on_delivery","cashChangeFor":null,"notes":null}`,
+      `{"customer":{"id":"c-1"},"address":{"addressLine":"Cl 99 # 1-1","neighborhood":"Belén","reference":null,"label":null,"save":true},${ITEMS},"deliveryFee":4000,"paymentMode":"cash_on_delivery","cashChangeFor":null,"notes":null}`,
     ])
   })
   async function board() {

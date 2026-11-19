@@ -183,7 +183,7 @@ describe("DeliveryOrderForm — Productos uses the step picker (T11)", () => {
     await waitFor(() => expect(env.createDeliveryOrder).toHaveBeenCalledTimes(1))
     expect(env.createDeliveryOrder.mock.calls[0]![0]).toEqual({
       customer: { phone: "3001234567", name: "Luis" },
-      address: { addressLine: "Calle 1 # 2-3", neighborhood: null, reference: null, label: null, save: false },
+      address: { addressLine: "Calle 1 # 2-3", neighborhood: null, reference: null, label: null, save: true },
       items: [
         { dishId: "d-1", quantity: 2, comments: "sin cebolla" },
         { dishId: "d-3", quantity: 1 },

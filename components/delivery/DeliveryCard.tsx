@@ -2,7 +2,7 @@
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { Phone, MapPin, AlertTriangle, Wallet, Clock } from 'lucide-react'
+import { Phone, MapPin, AlertTriangle, Wallet, Clock, Bike } from 'lucide-react'
 import type { DeliveryOrderWithBill } from '@/lib/api/delivery'
 import { statusLabel, allowedActions, type DeliveryAction } from '@/lib/delivery/state-machine'
 import type { DeliveryRole } from '@/lib/delivery/types'
@@ -32,6 +32,8 @@ interface DeliveryCardProps {
   lateMinutes?: number
   /** Clock for the late tone (the board refreshes it). */
   nowMs?: number
+  /** H-078: name of the assigned courier, when there is one. */
+  courierName?: string | null
 }
 
 const ACTION_LABELS: Record<DeliveryAction, string> = {
@@ -68,6 +70,7 @@ export function DeliveryCard({
   showStatus = false,
   lateMinutes,
   nowMs = Date.now(),
+  courierName = null,
 }: DeliveryCardProps) {
   const { delivery, amountDue, subtotal, tax, isPaid } = row
   const actions = allowedActions(delivery.status, role)
@@ -132,6 +135,13 @@ export function DeliveryCard({
         <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-fg" aria-hidden />
         <span className="line-clamp-2 [overflow-wrap:anywhere]">{safeAddress(delivery)}</span>
       </p>
+
+      {courierName && (
+        <p className="flex min-w-0 items-center gap-1.5 text-xs text-fg-2">
+          <Bike className="h-3 w-3 shrink-0 text-muted-fg" aria-hidden />
+          <span className="truncate">Lo lleva {courierName}</span>
+        </p>
+      )}
 
       <div className="grid gap-1.5 border-t border-line pt-2">
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3">

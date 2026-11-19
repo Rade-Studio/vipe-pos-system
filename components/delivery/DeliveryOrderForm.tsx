@@ -236,6 +236,12 @@ export function DeliveryOrderForm({
     for (const i of issues) map.set(i.field, i.message)
     return map
   }, [issues])
+  // H-077: the customer fields show their error only once the operator left them.
+  const [touched, setTouched] = useState<ReadonlySet<'phone' | 'customerName'>>(() => new Set())
+  const markTouched = (field: 'phone' | 'customerName') =>
+    setTouched((prev) => (prev.has(field) ? prev : new Set(prev).add(field)))
+  const phoneIssue = touched.has('phone') ? (issuesByField.get('phone') ?? null) : null
+  const nameIssue = touched.has('customerName') ? (issuesByField.get('customerName') ?? null) : null
   const feeTextError = useMemo(() => {
     if (feeText === null) return null
     const parsed = parseDefaultFeeInput(feeText)
@@ -279,13 +285,13 @@ export function DeliveryOrderForm({
   // explicit signal "we asked the registry, there is no row".
   const onPhoneLookup = async () => {
     setPhoneLookupError(null)
+    markTouched('phone')
     const phone = draft.phoneInput.trim()
     if (phone.length === 0) return
+    // Lookups keep the stored rule (7..15 digits) so customers saved before the
+    // Colombian rule are still found; a new customer gets the rule from validateDraft.
     const normalized = normalizePhone(phone)
-    if (normalized === null) {
-      setPhoneLookupError('Ingresa un teléfono válido (7 a 15 dígitos)')
-      return
-    }
+    if (normalized === null) return
     const seq = ++lookupSeq.current
     setLookupPending(true)
     try {
@@ -474,12 +480,19 @@ export function DeliveryOrderForm({
                     void onPhoneLookup()
                   }
                 }}
-                aria-invalid={issuesByField.has('phone') || phoneLookupError !== null}
+                aria-invalid={phoneIssue !== null || phoneLookupError !== null}
+                aria-describedby={phoneLookupError ? 'phone-lookup-error' : phoneIssue ? 'phone-error' : undefined}
               />
               <p className="text-xs text-muted-fg">Enter busca el cliente.</p>
-              {phoneLookupError && <p className="text-xs text-destructive">{phoneLookupError}</p>}
-              {issuesByField.get('phone') && (
-                <p className="text-xs text-destructive">{issuesByField.get('phone')}</p>
+              {phoneLookupError && (
+                <p id="phone-lookup-error" className="text-xs text-destructive">
+                  {phoneLookupError}
+                </p>
+              )}
+              {phoneIssue && !phoneLookupError && (
+                <p id="phone-error" className="text-xs text-destructive">
+                  {phoneIssue}
+                </p>
               )}
             </div>
 
@@ -503,10 +516,14 @@ export function DeliveryOrderForm({
                   className="h-11"
                   value={draft.customerName}
                   onChange={(e) => dispatch({ type: 'setCustomerName', value: e.target.value })}
-                  aria-invalid={issuesByField.has('customerName')}
+                  onBlur={() => markTouched('customerName')}
+                  aria-invalid={nameIssue !== null}
+                  aria-describedby={nameIssue ? 'customerName-error' : undefined}
                 />
-                {issuesByField.get('customerName') && (
-                  <p className="text-xs text-destructive">{issuesByField.get('customerName')}</p>
+                {nameIssue && (
+                  <p id="customerName-error" className="text-xs text-destructive">
+                    {nameIssue}
+                  </p>
                 )}
               </div>
             )}

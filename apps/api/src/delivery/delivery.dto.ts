@@ -4,7 +4,7 @@ import { booleanQuery } from '../common/validation';
 import { ConsumeOrderStockResult } from '../inventory/inventory.dto';
 import { ComboLineRequest } from '../orders/orders.dto';
 import { PrintJobCreated } from '../print/print.dto';
-import { normalizePhone } from './phone';
+import { COLOMBIAN_PHONE_MESSAGE, normalizeColombianPhone, normalizePhone } from './phone';
 
 export const DELIVERY_STATUSES = ['received', 'preparing', 'ready', 'out_for_delivery', 'delivered', 'failed', 'cancelled'] as const;
 export type DeliveryStatus = (typeof DELIVERY_STATUSES)[number];
@@ -57,11 +57,20 @@ const toPhone = (value: string, ctx: z.RefinementCtx): string => {
   return normalized;
 };
 const phone = z.string().max(100).transform(toPhone);
-/** Courier phone: blank or null clears it, otherwise normalised. */
+/** A new phone (H-074, H-038): Colombian mobile or landline, normalised, or a 422 in Spanish. */
+const toColombianPhone = (value: string, ctx: z.RefinementCtx): string => {
+  const normalized = normalizeColombianPhone(value);
+  if (normalized === null) {
+    ctx.addIssue({ code: 'custom', message: COLOMBIAN_PHONE_MESSAGE });
+    return z.NEVER;
+  }
+  return normalized;
+};
+/** Courier phone: blank or null clears it, otherwise a Colombian phone, normalised. */
 const optionalPhone = z
   .string()
   .max(100)
-  .transform((value, ctx) => (value.trim() === '' ? null : toPhone(value, ctx)))
+  .transform((value, ctx) => (value.trim() === '' ? null : toColombianPhone(value, ctx)))
   .nullable();
 
 export const customerQuerySchema = z.strictObject({ phone });
@@ -88,7 +97,8 @@ export const createDeliveryOrderSchema = z
   .strictObject({
     customer: z.strictObject({
       id: z.string().max(100).optional(),
-      phone: z.string().max(100).optional(),
+      // H-074: a phone here registers or finds a customer by what the operator typed; it must be Colombian.
+      phone: z.string().max(100).transform(toColombianPhone).optional(),
       name: z.string().max(TEXT_MAX).optional(),
     }),
     address: z.strictObject({
@@ -185,13 +195,14 @@ export class Courier {
 
 export class CreateCourierRequest {
   @ApiProperty({ minLength: 1, maxLength: 80, description: 'Trimmed.' }) name!: string;
-  @ApiPropertyOptional({ type: String, nullable: true, description: 'Normalised like the web; blank or null clears it.' })
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'Colombian mobile (3 + 9 digits) or landline (60 + 8 digits), +57 optional, normalised to 10 digits; blank or null clears it. 409 when an active courier already uses it.' })
   phone?: string | null;
 }
 
 export class UpdateCourierRequest {
   @ApiPropertyOptional({ minLength: 1, maxLength: 80 }) name?: string;
-  @ApiPropertyOptional({ type: String, nullable: true, description: 'Blank or null clears it.' }) phone?: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'Same rule as on create; blank or null clears it. 409 when another active courier uses it.' })
+  phone?: string | null;
   @ApiPropertyOptional() isActive?: boolean;
 }
 
@@ -233,7 +244,7 @@ export class DeliveryOrder {
 
 class CreateDeliveryCustomer {
   @ApiPropertyOptional({ maxLength: 100, description: `Existing customer; uuid and exclusive with phone, ${BY_RPC}.` }) id?: string;
-  @ApiPropertyOptional({ maxLength: 100, description: `Looked up or registered by phone; 7..15 digits ${BY_RPC} (not normalised).` })
+  @ApiPropertyOptional({ maxLength: 100, description: 'Looked up or registered by phone; a Colombian mobile (3 + 9 digits) or landline (60 + 8 digits), +57 optional, normalised to 10 digits (422 otherwise).' })
   phone?: string;
   @ApiPropertyOptional({ maxLength: TEXT_MAX, description: `Required for a new customer (1..120 chars, ${BY_RPC}); renames an existing one when different.` })
   name?: string;
