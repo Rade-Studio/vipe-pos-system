@@ -26,7 +26,9 @@ import { PartialPaymentDialog } from "@/components/cashier/PartialPaymentDialog"
 import { toast } from "@/utils/toast"
 import { TransactionsList } from "@/components/cashier/TransactionsList"
 import { realtimeService } from "@/lib/api/realtime"
-import { getByStatus } from "@/lib/api/orders"
+import { getByStatus, getById as getOrderDto } from "@/lib/api/orders"
+import { listPaymentMethods, listRegisterPayments } from "@/lib/api/payments"
+import { invoiceTendersFromPayment, legacyInvoiceFields } from "@/lib/payments/invoice-tenders"
 import { queryClient } from "@/lib/queryClient"
 import { log } from "@/lib/log"
 import { buildSplitItems, pickSplitParent } from "@/lib/payments/split"
@@ -212,6 +214,8 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
 
   const selectEntry = (entry: QueueEntry) => {
     if (entry.key !== selectedKey) {
+      // G2: another row: a pending attempt of the previous one is no longer reported.
+      payAttemptRef.current = null
       setPayTotals(null)
       setBillNotice(null)
     }
@@ -226,6 +230,10 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
   selectedPayOrderRef.current = selectedEntry?.payOrder ?? null
   const handleSubmittingChange = useCallback((submitting: boolean) => {
     if (submitting && selectedPayOrderRef.current) payAttemptRef.current = selectedPayOrderRef.current
+  }, [])
+  // G2: only a network/unknown failure leaves the outcome open; a refusal means nothing was charged.
+  const handleSubmitFailed = useCallback((uncertain: boolean) => {
+    if (!uncertain) payAttemptRef.current = null
   }, [])
 
   const clearSelection = () => {
@@ -287,7 +295,10 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
       const row = (payload as { eventType?: string; new?: { id?: string; status?: string } }).new
       const attempt = payAttemptRef.current
       const paidAttempt =
-        (payload as { eventType?: string }).eventType === "UPDATE" && row?.status === "paid" && attempt?.id === row.id
+        (payload as { eventType?: string }).eventType === "UPDATE" &&
+        row?.status === "paid" &&
+        attempt?.id === row.id &&
+        selectedPayOrderRef.current?.id === row.id
       queryClient.setQueryData<Order[]>([...cashierOrdersQueryKey], (prev: Order[] | undefined) =>
         applyCashierOrderEvent(prev ?? [], payload as { eventType: string }),
       )
@@ -521,26 +532,22 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
   const showInvoice = (orderId: string) => {
     const order = getOrderById(orderId)
     if (!order) return
-    const invoice = invoiceForOrder(order, false)
+    const invoice = invoiceForOrder(order)
     if (!invoice) return
     setInvoiceIsPayment(false)
     setCompletedInvoiceData(invoice)
     setShowCompletedInvoice(true)
   }
 
-  /**
-   * The printable invoice of an order the screen holds. `lenient` (a payment
-   * confirmed by realtime, F3) prints "—" for a table or waiter it cannot
-   * resolve instead of giving up; a reprint keeps the strict rule.
-   */
-  function invoiceForOrder(order: Order, lenient: boolean): PrintableInvoice | null {
+  /** The printable invoice of an order: null without its table and waiter (a takeaway names its customer). */
+  function invoiceForOrder(order: Order): PrintableInvoice | null {
     // D6 Rule A: handler-only read, no subscription needed at the point of use.
     const takeaway = order.orderType === "takeaway"
     const table = takeaway ? undefined : useTableStore.getState().getTableById(order.tableId)
     const waiter = profiles.find((p) => p.id === order.waiter)
 
     // A takeaway order has no table: the invoice names its customer instead (S8).
-    if (!lenient && ((!takeaway && !table) || (!takeaway && !waiter))) return null
+    if ((!takeaway && !table) || (!takeaway && !waiter)) return null
 
     // Asegurarse de que los items y el bill estén correctos
     const items = order.items
@@ -563,7 +570,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
       items: items,
       bill: bill,
       waiter: waiter?.name ?? "N/A",
-      table: table ? table.number : takeaway ? takeawayLabel(order) : "—",
+      table: table ? table.number : takeawayLabel(order),
       ...(order.orderType
         ? { orderType: order.orderType, ...(takeaway ? { customerName: order.customerName ?? null } : {}) }
         : {}),
@@ -572,16 +579,42 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
     return invoice
   }
 
-  // F3 (H-065): the payment went through but its reply was lost. The realtime
-  // move to `paid` takes the order off the queue; instead of closing the panel
-  // silently, the cashier sees "Pago registrado" and the invoice.
-  paidByRealtimeRef.current = (order: Order) => {
-    const invoice = invoiceForOrder({ ...order, status: "paid" }, true)
-    toast.success("Pago registrado. La orden quedó pagada; se muestra su factura.")
-    if (!invoice) return
-    setInvoiceIsPayment(true)
-    setCompletedInvoiceData(invoice)
-    setShowCompletedInvoice(true)
+  // F3/G3 (H-065): the payment went through but its reply was lost. The
+  // realtime move to `paid` takes the order off the queue; instead of closing
+  // the panel silently, the cashier sees "Pago registrado" and the invoice,
+  // built from the server's paid order and its payment (tip, total, methods).
+  // If either cannot be read, the toast alone says the payment exists.
+  paidByRealtimeRef.current = (attempt: Order) => {
+    const registerId = currentRegister?.id
+    void (async () => {
+      try {
+        if (!registerId) throw new Error("no register")
+        const [dto, payments, methods] = await Promise.all([
+          getOrderDto(attempt.id),
+          listRegisterPayments([registerId]),
+          listPaymentMethods(),
+        ])
+        const payment = payments.find((row) => row.orderId === attempt.id)
+        const base = payment ? invoiceForOrder(toCashierOrder(dto)) : null
+        if (!payment || !base) throw new Error("paid order not readable")
+        const tenders = invoiceTendersFromPayment(payment, methods)
+        const legacy = legacyInvoiceFields(tenders)
+        toast.success("Pago registrado. La orden quedó pagada; se muestra su factura.")
+        setInvoiceIsPayment(true)
+        setCompletedInvoiceData({
+          ...base,
+          paymentMethod: legacy.paymentMethod as PrintableInvoice["paymentMethod"],
+          cashReceived: legacy.cashReceived ?? undefined,
+          cashChange: legacy.cashChange > 0 ? legacy.cashChange : undefined,
+          tenders,
+          change: legacy.cashChange,
+        })
+        setShowCompletedInvoice(true)
+      } catch (error) {
+        log.error("Pago confirmado por tiempo real sin factura:", { error: String(error) })
+        toast.success("Pago registrado. La orden quedó pagada.")
+      }
+    })()
   }
 
   const handlePaid = (invoice: PrintableInvoice) => {
@@ -950,6 +983,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
                   onCancel={clearSelection}
                   onPaid={handlePaid}
                   onSubmittingChange={handleSubmittingChange}
+                  onSubmitFailed={handleSubmitFailed}
                   onTotalsChange={setPayTotals}
                   waiterName={selectedEntry.waiterName}
                   undoWindow

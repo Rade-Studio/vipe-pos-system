@@ -277,17 +277,18 @@ export class PromotionsService {
   }
 
   /**
-   * H-021: an automatic fixed product discount must stay below the list price
-   * of every active dish it targets, and an automatic percentage below 100 %,
+   * H-021: a fixed product discount (any mode but manual_pin) must stay below
+   * the list price of every active dish it targets, and a percentage below 100 %,
    * or the dish would be sold at $0. The cheapest offending
    * dish is named in the 422 (`dishName`, `dishPrice`); the request
    * transaction rolls the write back. The engine still caps any discount at
    * the price, so promotions stored before this rule keep working.
    */
   private async assertDiscountBelowPrices(id: string, p: PromotionShape): Promise<void> {
-    // A manual or PIN courtesy may bring a dish to $0 on purpose: someone applies
-    // it to one order (and authorizes it with a PIN); only automatic ones are checked.
-    if (p.kind !== 'product_discount' || p.mode !== 'automatic' || p.discountValue === null) return;
+    // A PIN courtesy ("Cortesía de cumpleaños") may bring a dish to $0 on
+    // purpose: a supervisor authorizes it on one order. Automatic and plain
+    // manual promotions are checked (G1).
+    if (p.kind !== 'product_discount' || p.mode === 'manual_pin' || p.discountValue === null) return;
     // A percentage of 100 leaves every targeted dish at $0 (above 100 is discount_percentage_range).
     if (p.discountType === 'percentage') {
       if (p.discountValue >= 100) throw rejected([{ path: ['discountValue'], message: 'discount_percentage_full' }]);
@@ -373,8 +374,14 @@ function defaults(now: RestaurantNow): Omit<PromotionShape, 'name' | 'descriptio
 /** The stored promotion as a write body, so a PATCH is validated merged. */
 const sortedIds = (ids: readonly string[]) => [...new Set(ids)].sort().join(',');
 
-/** True when the body changes the discount type, value or targets of the stored promotion. */
-function discountEdited(body: { discountType?: unknown; discountValue?: unknown; targets?: PromotionShape['targets'] }, stored: PromotionShape): boolean {
+/** True when the body changes the kind, mode, discount type, value or targets of the stored promotion. */
+function discountEdited(
+  body: { kind?: unknown; mode?: unknown; discountType?: unknown; discountValue?: unknown; targets?: PromotionShape['targets'] },
+  stored: PromotionShape,
+): boolean {
+  // G1: leaving manual_pin, or turning into a product discount, is an edit of the discount too.
+  if (body.kind !== undefined && body.kind !== stored.kind) return true;
+  if (body.mode !== undefined && body.mode !== stored.mode) return true;
   if (body.discountType !== undefined && body.discountType !== stored.discountType) return true;
   if (body.discountValue !== undefined && body.discountValue !== stored.discountValue) return true;
   if (body.targets !== undefined) {

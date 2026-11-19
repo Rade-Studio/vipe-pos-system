@@ -392,6 +392,36 @@ describe('catalog endpoints (Testcontainers, vipe_api)', () => {
       expect((await adminA().delete(`/api/catalog/promotions/${res.body.id}`)).status).toBe(204);
     });
 
+    it('checks plain manual promotions and a switch out of manual_pin; only manual_pin is exempt (G1)', async () => {
+      const dish = await adminA().post('/api/catalog/dishes', { name: 'Tres mil', price: 3000 });
+      expect(dish.status).toBe(201);
+      const on = (name: string, mode: string, discountType: string, discountValue: number) =>
+        adminA().post('/api/catalog/promotions', {
+          name, mode, discountType, discountValue, startDate: '2026-01-01T00:00:00Z', endDate: '2026-12-31T00:00:00Z',
+          targets: { dishIds: [dish.body.id], categoryIds: [], subcategoryIds: [] },
+        });
+      const manual = await on('Manual excesivo', 'manual', 'fixed_amount', 20000);
+      expect(manual.status).toBe(422);
+      expect(manual.body).toMatchObject({ code: 'discount_exceeds_price', dishName: 'Tres mil' });
+      expect(await db("SELECT 1 FROM promotions WHERE name = 'Manual excesivo'")).toHaveLength(0);
+
+      const pinFixed = await on('PIN fijo', 'manual_pin', 'fixed_amount', 20000);
+      expect(pinFixed.status).toBe(201);
+      const toAuto = await adminA().patch(`/api/catalog/promotions/${pinFixed.body.id}`, { mode: 'automatic' });
+      expect(toAuto.status).toBe(422);
+      expect(toAuto.body).toMatchObject({ code: 'discount_exceeds_price' });
+      expect(await db('SELECT mode FROM promotions WHERE id = $1', [pinFixed.body.id])).toEqual([{ mode: 'manual_pin' }]);
+
+      const pinFull = await on('PIN total', 'manual_pin', 'percentage', 100);
+      expect(pinFull.status).toBe(201);
+      const fullAuto = await adminA().patch(`/api/catalog/promotions/${pinFull.body.id}`, { mode: 'automatic' });
+      expect(fullAuto.status).toBe(422);
+      expect(fullAuto.body).toMatchObject({ code: 'discount_percentage_full' });
+      // Pausing the courtesy is no edit of its discount.
+      expect((await adminA().patch(`/api/catalog/promotions/${pinFull.body.id}`, { active: false })).status).toBe(200);
+      for (const id of [pinFixed.body.id, pinFull.body.id]) expect((await adminA().delete(`/api/catalog/promotions/${id}`)).status).toBe(204);
+    });
+
     it('ignores inactive dishes when checking a fixed discount against the targets (H-021)', async () => {
       const cheap = await adminA().post('/api/catalog/dishes', { name: 'Inactivo barato', price: 1000, active: false });
       expect(cheap.status).toBe(201);

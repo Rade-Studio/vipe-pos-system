@@ -85,6 +85,11 @@ export interface PaymentPanelProps {
   /** The payment was registered: the caller shows the invoice and closes. */
   onPaid: (invoice: PrintableInvoice) => void
   onSubmittingChange?: (submitting: boolean) => void
+  /**
+   * A submit failed. `uncertain`: a network/unknown failure, the payment may
+   * exist; false: the server refused it, nothing was charged (G2).
+   */
+  onSubmitFailed?: (uncertain: boolean) => void
   onTotalsChange?: (totals: PaymentPanelTotals) => void
   /** The order's waiter: the tip is named for them ("Propina para Ana"). */
   waiterName?: string
@@ -220,6 +225,7 @@ export function PaymentPanel({
   onCancel,
   onPaid,
   onSubmittingChange,
+  onSubmitFailed,
   onTotalsChange,
   waiterName,
   undoWindow = false,
@@ -563,6 +569,7 @@ export function PaymentPanel({
       }
       onPaid(invoice)
     } catch (err) {
+      onSubmitFailed?.(!(err instanceof PaymentServiceError) || err.kind === "unknown")
       const msg = paymentErrorMessage(err)
       if (msg === ALREADY_PAID_MESSAGE) {
         // Charged elsewhere (another register or tab): close and re-read the queue.
