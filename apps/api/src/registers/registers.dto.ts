@@ -16,8 +16,6 @@ const MAX_SUMMARY_IDS = 100;
 /** GET /registers/:id/paid-orders returns at most this many rows (default 100). */
 export const PAID_ORDERS_MAX = 200;
 export const PAID_ORDERS_DEFAULT = 100;
-/** numeric(10,2) columns. */
-const money = z.number().max(99_999_999.99);
 /** Whole pesos in a numeric(10,2) column. */
 const wholePesos = z.number().int().min(0).max(99_999_999);
 
@@ -33,7 +31,7 @@ export const paidOrdersQuerySchema = z.strictObject({
  * and cash movements, and opened_by defaults to the caller's profile (an
  * `openedBy` field is an unknown field, 422).
  */
-export const openRegisterSchema = z.strictObject({ initialCash: money.min(0) });
+export const openRegisterSchema = z.strictObject({ initialCash: wholePesos });
 /**
  * Close body: `leaveOpenOrders: true` confirms that open orders pass to the
  * next register. `countedCash` is required while the register is open (the
@@ -56,7 +54,8 @@ export const closeRegisterSchema = z.strictObject({
 });
 export type CloseRegisterInput = z.infer<typeof closeRegisterSchema>;
 export const createCashTransactionSchema = z.strictObject({
-  amount: money.positive(),
+  /** Whole pesos (H-068), as the payment flow. */
+  amount: wholePesos.positive(),
   type: z.enum(CASH_TRANSACTION_TYPES),
   reason: z.enum(CASH_TRANSACTION_REASONS),
   description: z.string().trim().max(500).nullable().optional(),
@@ -123,7 +122,7 @@ export class CashRegister extends RegisterCount {
 }
 
 export class OpenRegisterRequest {
-  @ApiProperty({ minimum: 0 }) initialCash!: number;
+  @ApiProperty({ type: 'integer', minimum: 0, description: 'Whole pesos (H-061).' }) initialCash!: number;
 }
 
 export class CloseRegisterRequest {
@@ -147,7 +146,7 @@ export class CloseRegisterRequest {
 }
 
 export class CreateCashTransactionRequest {
-  @ApiProperty({ minimum: 0.01 }) amount!: number;
+  @ApiProperty({ type: 'integer', minimum: 1, description: 'Whole pesos (H-068).' }) amount!: number;
   @ApiProperty({ enum: CASH_TRANSACTION_TYPES }) type!: CashTransactionType;
   @ApiProperty({ enum: CASH_TRANSACTION_REASONS }) reason!: CashTransactionReason;
   @ApiPropertyOptional({

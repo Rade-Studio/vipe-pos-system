@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 /**
@@ -393,5 +393,61 @@ describe("DeliveryBoard — T12 dispatch console", () => {
     expect(await screen.findByText(/El pago de \$\s?23\.500 se anula: devuelve el dinero al cliente/)).toBeInTheDocument()
     expect(await screen.findByRole("radio", { name: /Laura Gómez/ })).toBeInTheDocument()
     expect(cancelDelivery).not.toHaveBeenCalled()
+  })
+})
+
+describe("DeliveryBoard — Entregado asks first (H-072)", () => {
+  const outRow = (overrides: Record<string, unknown> = {}, isPaid = false) => ({
+    ...boardRow({ delivery_status: "out_for_delivery", courier_id: "k-1", dispatched_at: "2026-10-07T10:10:00.000Z", ...overrides }),
+    isPaid,
+  })
+  const delivered = () => parseOrderDeliveryRow(wireRow({ delivery_status: "delivered", delivered_at: "2026-10-07T10:30:00.000Z" }))
+
+  async function pressDelivered(row: ReturnType<typeof outRow>) {
+    listActiveDeliveries.mockResolvedValue([row])
+    setDeliveryStatus.mockResolvedValue(delivered())
+    renderBoard(makeClient())
+    // The narrow board shows one column at a time.
+    const tab = await screen.findByRole("tab", { name: /En camino/ })
+    fireEvent.mouseDown(tab, { button: 0 })
+    fireEvent.click(tab)
+    fireEvent.click(await screen.findByRole("button", { name: "Entregado" }))
+    return screen.findByRole("alertdialog")
+  }
+
+  it("warns that a prepaid order has no payment and sends nothing until confirmed", async () => {
+    const dialog = await pressDelivered(outRow({ payment_mode: "prepaid" }))
+    expect(dialog).toHaveTextContent("Este pedido anticipado no tiene pago registrado")
+    expect(setDeliveryStatus).not.toHaveBeenCalled()
+    fireEvent.click(within(dialog).getByRole("button", { name: "Volver" }))
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument())
+    expect(setDeliveryStatus).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole("button", { name: "Entregado" }))
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Sí, marcar entregado" }))
+    await waitFor(() => expect(setDeliveryStatus).toHaveBeenCalledTimes(1))
+    expect(setDeliveryStatus).toHaveBeenCalledWith({ orderId: "d-1", action: "deliver" })
+  })
+
+  it("reminds that a cash-on-delivery order is still unpaid", async () => {
+    const dialog = await pressDelivered(outRow())
+    expect(dialog).toHaveTextContent("Este pedido no tiene pago registrado: el domiciliario trae el dinero, regístralo en caja.")
+    expect(setDeliveryStatus).not.toHaveBeenCalled()
+  })
+
+  it("a paid order only asks to confirm, with no payment warning", async () => {
+    const dialog = await pressDelivered(outRow({ payment_mode: "prepaid" }, true))
+    expect(dialog).toHaveTextContent("¿Marcar como entregado?")
+    expect(dialog).not.toHaveTextContent(/no tiene pago registrado/)
+    fireEvent.click(within(dialog).getByRole("button", { name: "Sí, marcar entregado" }))
+    await waitFor(() => expect(setDeliveryStatus).toHaveBeenCalledWith({ orderId: "d-1", action: "deliver" }))
+  })
+
+  it("other actions still go straight through (PRESERVE)", async () => {
+    renderBoard(makeClient())
+    await waitFor(() => expect(screen.getByText("Ana Ruiz")).toBeInTheDocument())
+    fireEvent.click(screen.getByRole("button", { name: "Preparar" }))
+    await waitFor(() => expect(setDeliveryStatus).toHaveBeenCalledWith({ orderId: "d-1", action: "start_preparing" }))
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument()
   })
 })

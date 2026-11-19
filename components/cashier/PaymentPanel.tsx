@@ -19,7 +19,12 @@ import type { DeliveryOrder } from "@/lib/delivery/types"
 import { buildDeliveryPrintInfo } from "@/lib/delivery/print"
 import { listPaymentMethods, payOrder } from "@/lib/api/payments"
 import { PaymentServiceError } from "@/lib/payments/types"
-import type { PayOrderResult, PaymentMethodOption, PaymentServiceErrorKind } from "@/lib/payments/types"
+import type {
+  PayOrderResult,
+  PaymentIssue,
+  PaymentMethodOption,
+  PaymentServiceErrorKind,
+} from "@/lib/payments/types"
 import { serverBill } from "@/lib/payments/bill"
 import { buildPayOrderTenders, zeroTotalTenders } from "@/lib/payments/tenders"
 import { invoiceTendersFromPayOrder, legacyInvoiceFields } from "@/lib/payments/invoice-tenders"
@@ -80,6 +85,11 @@ export interface PaymentPanelProps {
   /** The payment was registered: the caller shows the invoice and closes. */
   onPaid: (invoice: PrintableInvoice) => void
   onSubmittingChange?: (submitting: boolean) => void
+  /**
+   * A submit failed. `uncertain`: a network/unknown failure, the payment may
+   * exist; false: the server refused it, nothing was charged (G2).
+   */
+  onSubmitFailed?: (uncertain: boolean) => void
   onTotalsChange?: (totals: PaymentPanelTotals) => void
   /** The order's waiter: the tip is named for them ("Propina para Ana"). */
   waiterName?: string
@@ -141,8 +151,49 @@ const ERROR_TOAST: Record<PaymentServiceErrorKind, string> = {
   unknown: "Ocurrió un error al procesar el pago. Intenta de nuevo.",
 }
 
+/** pay_order's "order … is already paid": another register or tab charged it first. */
+const ALREADY_PAID = /is already paid/
+export const ALREADY_PAID_MESSAGE = "Esta orden ya fue cobrada en otra caja/pestaña"
+/** pay_order refuses the key of a voided payment: the retry needs a new attempt (F4). */
+const VOIDED_KEY = /belongs to a voided payment/
+export const VOIDED_KEY_MESSAGE =
+  "El pago anterior de esta orden fue anulado. Vuelve a registrar para cobrarla con un intento nuevo."
+
+/** The cashier-facing Spanish text of a tender issue (the helper's own text is for logs). */
+function issueMessage(
+  issue: PaymentIssue,
+  methodName: (id: string) => string,
+  tenders: { methodId: string }[],
+  balanceBefore: (lineIndex: number) => number,
+): string {
+  const line = issue.lineIndex !== undefined ? tenders[issue.lineIndex] : undefined
+  const name = line ? methodName(line.methodId) : "El método"
+  switch (issue.code) {
+    case "electronic-overpay":
+      return `${name} no puede superar el saldo (${formatCurrency(balanceBefore(issue.lineIndex ?? 0))})`
+    case "line-not-needed":
+      return `El pago con ${name} sobra: la cuenta ya está cubierta`
+    case "inactive-method":
+      return `${name} está desactivado; quita ese pago`
+    case "unknown-method":
+      return "Un pago usa un método que ya no existe; quítalo"
+    case "invalid-amount":
+      return `El monto de ${name} debe ser un número entero de pesos mayor que 0`
+    case "too-many-lines":
+      return "Puedes registrar como máximo 20 pagos por cuenta"
+    case "invalid-tip":
+      return "La propina debe ser un número entero de pesos"
+    case "nothing-to-charge":
+      return "No hay nada que cobrar"
+    default:
+      return issue.message
+  }
+}
+
 function paymentErrorMessage(err: unknown): string {
   if (err instanceof PaymentServiceError) {
+    if (ALREADY_PAID.test(err.message)) return ALREADY_PAID_MESSAGE
+    if (VOIDED_KEY.test(err.message)) return VOIDED_KEY_MESSAGE
     const base = ERROR_TOAST[err.kind]
     if (base) return base
     return err.message || "La operación fue rechazada por el servidor"
@@ -174,6 +225,7 @@ export function PaymentPanel({
   onCancel,
   onPaid,
   onSubmittingChange,
+  onSubmitFailed,
   onTotalsChange,
   waiterName,
   undoWindow = false,
@@ -400,8 +452,11 @@ export function PaymentPanel({
   // Decided from the server bill, never from a draft that may not be seeded for it yet.
   const zeroTotal = bill.amountDue + deliveryFee === 0 && draft.amountDue === 0 && draft.tip === 0
   const zeroTenders = zeroTotal ? zeroTotalTenders(activeMethods) : []
-  const canRegister = zeroTotal ? zeroTenders.length > 0 && !draft.submitting && !draft.lastError : view.canConfirm
+  const canRegister = zeroTotal ? zeroTenders.length > 0 && !draft.submitting : view.canConfirm
   const issues = zeroTotal ? view.issues.filter((issue) => issue.code !== "nothing-to-charge") : view.issues
+  // What was still owed before each line: the balance an electronic line cannot exceed.
+  const balanceBefore = (lineIndex: number) =>
+    view.totalToCharge - view.lines.slice(0, lineIndex).reduce((sum, line) => sum + line.applied, 0)
 
   const drawerCurrent = drawerSummary?.expectedCash ?? 0
   const drawerWarning =
@@ -445,7 +500,7 @@ export function PaymentPanel({
       queryClient.invalidateQueries({ queryKey: ["register-paid-orders"] })
 
       if (result.alreadyPaid) {
-        toast.success("Esta orden ya estaba pagada. Mostrando factura.")
+        toast.success("Pago registrado. Esta orden ya estaba pagada; se muestra su factura.")
       } else {
         toast.success("Pago registrado correctamente")
       }
@@ -514,8 +569,20 @@ export function PaymentPanel({
       }
       onPaid(invoice)
     } catch (err) {
+      onSubmitFailed?.(!(err instanceof PaymentServiceError) || err.kind === "unknown")
       const msg = paymentErrorMessage(err)
+      if (msg === ALREADY_PAID_MESSAGE) {
+        // Charged elsewhere (another register or tab): close and re-read the queue.
+        dispatch({ type: "submitFailed", error: msg })
+        toast.error(msg)
+        queryClient.invalidateQueries({ queryKey: ["register-paid-orders"] })
+        onBillStale?.()
+        onCancel()
+        return
+      }
       dispatch({ type: "submitFailed", error: msg })
+      // That key can never succeed again: the next try is a new attempt, same tenders.
+      if (msg === VOIDED_KEY_MESSAGE) dispatch({ type: "newAttempt", idempotencyKey: uuid() })
       setSubmitError(msg)
       toast.error(msg)
       const mismatch = err instanceof PaymentServiceError ? TOTAL_MISMATCH.exec(err.message) : null
@@ -775,7 +842,7 @@ export function PaymentPanel({
           <div className="rounded-card border border-status-warning-line bg-status-warning-bg p-3 text-sm text-status-warning-fg">
             <ul className="list-disc space-y-1 pl-4">
               {issues.map((iss, i) => (
-                <li key={i}>{iss.message}</li>
+                <li key={i}>{issueMessage(iss, methodName, draft.tenders, balanceBefore)}</li>
               ))}
             </ul>
           </div>

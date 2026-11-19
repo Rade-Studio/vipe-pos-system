@@ -268,6 +268,109 @@ async function addCashLine() {
 }
 const bodyAt = (i: number) => payOrder.mock.calls[i][0] as any
 
+describe("payment saved but its reply lost (H-065 / F3)", () => {
+  it("shows Pago registrado and the invoice when the order turns paid after a failed submit", async () => {
+    renderCashier()
+    await openPaymentFor("Mesa 1")
+    await addCashLine()
+    payOrder.mockImplementationOnce(async () => { throw new PaymentServiceError({ kind: "unknown", message: "Failed to fetch" }) })
+    confirmPayment()
+    await waitFor(() => expect(payOrder).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(registerButton()).toBeEnabled())
+    vi.mocked(toast.success).mockClear()
+
+    // G3: the invoice comes from the server's paid order and its payment.
+    getById.mockImplementation(async (id: string) => dbRow({ id, status: "paid", tip: 4_000, tip_percentage: 10, total: 51_600 }))
+    listPaymentMethods.mockResolvedValue([
+      { id: "pm-cash", code: "cash", name: "Efectivo", kind: "cash" as const, isActive: true, sortOrder: 1 },
+      { id: "pm-nequi", code: "nequi", name: "Nequi", kind: "electronic", isActive: true, sortOrder: 2 },
+    ] as never)
+    listRegisterPayments.mockResolvedValue([
+      {
+        id: "pay-9", orderId: "o-1", cashRegisterId: "reg-1", cashierProfileId: "cashier-1", amountDue: 47_600, tipAmount: 4_000,
+        totalCharged: 51_600, changeGiven: 0, idempotencyKey: "k", createdAt: "2026-10-07T12:30:00.000Z",
+        tenders: [{ id: "t-1", paymentId: "pay-9", lineNo: 1, paymentMethodId: "pm-nequi", methodCode: "nequi", methodKind: "electronic", amount: 51_600, cashReceived: null }],
+      },
+    ] as never)
+    emit(dbRow({ status: "paid" }))
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Pago registrado. La orden quedó pagada; se muestra su factura."))
+    expect(await screen.findByRole("button", { name: "Cerrar" })).toBeInTheDocument()
+    const text = (document.body.textContent ?? "").replace(/\s+/g, " ")
+    expect(text).toMatch(/Propina \(10%\):\s*\$ 4\.000/)
+    expect(text).toContain("$ 51.600")
+    expect(text).toContain("Nequi")
+    expect(text).not.toContain("—")
+    expect(payOrder).toHaveBeenCalledTimes(1)
+    getById.mockImplementation(async (id: string) => dbRow({ id }))
+    listRegisterPayments.mockResolvedValue([])
+  })
+
+  it("if the paid order cannot be read, shows Pago registrado only, with no invoice (G3)", async () => {
+    renderCashier()
+    await openPaymentFor("Mesa 1")
+    await addCashLine()
+    payOrder.mockImplementationOnce(async () => { throw new PaymentServiceError({ kind: "unknown", message: "Failed to fetch" }) })
+    confirmPayment()
+    await waitFor(() => expect(registerButton()).toBeEnabled())
+    vi.mocked(toast.success).mockClear()
+    getById.mockImplementationOnce(async () => { throw new Error("offline") })
+    emit(dbRow({ status: "paid" }))
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Pago registrado. La orden quedó pagada."))
+    expect(screen.queryByRole("button", { name: "Cerrar" })).not.toBeInTheDocument()
+  })
+
+  const twoTables = () => {
+    getByStatus.mockResolvedValue([dbRow(), dbRow({ id: "o-2", table_id: "t-2", order_items: halfItems, subtotal: 20_000, tax: 3_800, total: 23_800 })])
+    useTableStore.setState({ tables: [{ id: "t-1", number: 1, status: "occupied" }, { id: "t-2", number: 2, status: "occupied" }] as any })
+  }
+
+  it("a definitive refusal forgets the attempt: o-1 paid later shows nothing over Mesa 2 (G2)", async () => {
+    twoTables()
+    renderCashier()
+    await openPaymentFor("Mesa 1")
+    await addCashLine()
+    payOrder.mockImplementationOnce(async () => { throw new PaymentServiceError({ kind: "rejected", message: "Register is closed" }) })
+    confirmPayment()
+    await waitFor(() => expect(payOrder).toHaveBeenCalledTimes(1))
+    fireEvent.click(await queueRow("Mesa 2"))
+    await screen.findByText(/Cobrar · Mesa 2/)
+    vi.mocked(toast.success).mockClear()
+    emit(dbRow({ status: "paid" }))
+    await new Promise((r) => setTimeout(r, 50))
+    expect(toast.success).not.toHaveBeenCalled()
+    expect(screen.queryByRole("button", { name: "Cerrar" })).not.toBeInTheDocument()
+    expect(screen.getByText(/Cobrar · Mesa 2/)).toBeInTheDocument()
+  })
+
+  it("switching rows forgets an uncertain attempt: o-1 paid later shows nothing (G2)", async () => {
+    twoTables()
+    renderCashier()
+    await openPaymentFor("Mesa 1")
+    await addCashLine()
+    payOrder.mockImplementationOnce(async () => { throw new PaymentServiceError({ kind: "unknown", message: "Failed to fetch" }) })
+    confirmPayment()
+    await waitFor(() => expect(payOrder).toHaveBeenCalledTimes(1))
+    fireEvent.click(await queueRow("Mesa 2"))
+    await screen.findByText(/Cobrar · Mesa 2/)
+    vi.mocked(toast.success).mockClear()
+    emit(dbRow({ status: "paid" }))
+    await new Promise((r) => setTimeout(r, 50))
+    expect(toast.success).not.toHaveBeenCalled()
+    expect(screen.getByText(/Cobrar · Mesa 2/)).toBeInTheDocument()
+  })
+
+  it("an order paid elsewhere without an attempt here still leaves silently (PRESERVE)", async () => {
+    renderCashier()
+    await openPaymentFor("Mesa 1")
+    vi.mocked(toast.success).mockClear()
+    emit(dbRow({ status: "paid" }))
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "Cobrar orden" })).not.toBeInTheDocument())
+    expect(toast.success).not.toHaveBeenCalled()
+    expect(screen.queryByRole("button", { name: "Cerrar" })).not.toBeInTheDocument()
+  })
+})
+
 describe("PROBE re-bill", () => {
   it("P1 realtime items/qty change with a line added: notice, lines dropped, new amount", async () => {
     renderCashier()
@@ -327,9 +430,8 @@ describe("PROBE re-bill", () => {
     expect(bodyAt(0).tenders[0].amount).toBe(47_600)
   })
 
-  // Pre-existing behaviour (also in the old dialog): after a failed pay_order the draft keeps lastError and
-  // the confirm stays disabled until the bill or the selection changes, so a same-key retry is unreachable.
-  it.skip("P6 same-bill failure keeps the idempotency key on retry", async () => {
+  // H-065: after a failed pay_order the cashier can retry the same bill with the same key.
+  it("P6 same-bill failure keeps the idempotency key on retry", async () => {
     renderCashier()
     await openPaymentFor("Mesa 1")
     await addCashLine()

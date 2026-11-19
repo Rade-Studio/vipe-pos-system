@@ -191,6 +191,26 @@ describe('registers endpoints (Testcontainers, vipe_api)', () => {
       }
     });
 
+    it('rejects initial cash with centavos or below zero and opens nothing (H-061)', async () => {
+      const before = await db(`SELECT count(*)::int AS n FROM cash_registers WHERE restaurant_id = $1`, [fixtures.restaurantB]);
+      for (const initialCash of [1000.5, 0.01, -0.5, -1000]) {
+        const res = await adminB().post('/api/registers/open', { initialCash });
+        expect(res.status).toBe(422);
+      }
+      expect(await db(`SELECT count(*)::int AS n FROM cash_registers WHERE restaurant_id = $1`, [fixtures.restaurantB])).toEqual(before);
+    });
+
+    it('the database refuses initial cash with centavos or below zero (H-061)', async () => {
+      for (const initialCash of ['1000.50', '-1']) {
+        await expect(
+          db(
+            `INSERT INTO cash_registers (restaurant_id, opening_timestamp, initial_cash, status) VALUES ($1, now(), $2, 'closed')`,
+            [fixtures.restaurantB, initialCash],
+          ),
+        ).rejects.toMatchObject({ code: '23514' });
+      }
+    });
+
     it("never returns another restaurant's open register as current", async () => {
       const res = await adminB().get('/api/registers/current');
       expect(res.status).toBe(200);
@@ -243,6 +263,9 @@ describe('registers endpoints (Testcontainers, vipe_api)', () => {
         { amount: 1, type: 'deposit', reason: null },
         { amount: 1, type: 'deposit', reason: 'refund' },
         { amount: 1, type: 'deposit', reason: 'Otro' },
+        // H-068: whole pesos only, for withdrawals and deposits.
+        { amount: 1000.5, type: 'withdrawal', reason: 'supplier' },
+        { amount: 0.5, type: 'deposit', reason: 'change_fund' },
       ]) {
         expect((await cashierA().post(url, body)).status).toBe(422);
       }

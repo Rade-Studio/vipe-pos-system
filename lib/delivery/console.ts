@@ -253,6 +253,7 @@ export function closedTodayLine(summary: ClosedTodaySummary): { counts: string; 
       plural(summary.deliveredCount, 'entregado', 'entregados'),
       plural(summary.cancelledCount, 'cancelado', 'cancelados'),
       plural(summary.failedCount, 'fallido', 'fallidos'),
+      ...(summary.pendingFromEarlierDays ? [`${summary.pendingFromEarlierDays} por cobrar de días anteriores`] : []),
     ].join(' · '),
     average:
       summary.averageDeliveryMinutes === null

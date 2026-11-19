@@ -41,10 +41,12 @@ import {
 } from '@/lib/api/delivery'
 import { normalizePhone } from '@/lib/delivery/phone'
 import { formatAddress } from '@/lib/delivery/address'
+import { parseDefaultFeeInput } from '@/lib/delivery/courier-admin'
 import {
   initialOrderDraft,
   orderDraftReducer,
   validateDraft,
+  deliveryFeeWarning,
   draftTotals,
   draftLineKey,
   toCreateInput,
@@ -125,6 +127,9 @@ export function DeliveryOrderForm({
   // Once the operator types a fee, a suggestion that arrives later (or a
   // re-suggested value) must not overwrite what they typed.
   const feeTouched = useRef(false)
+  // H-075: the text as typed; null until the operator edits the fee. An
+  // invalid text keeps the last valid fee in the draft and blocks the send.
+  const [feeText, setFeeText] = useState<string | null>(null)
   const [phoneLookupError, setPhoneLookupError] = useState<string | null>(null)
   // One gate per form instance; the state flag only drives the button.
   const [submitGate] = useState(createSingleFlight)
@@ -231,6 +236,13 @@ export function DeliveryOrderForm({
     for (const i of issues) map.set(i.field, i.message)
     return map
   }, [issues])
+  const feeTextError = useMemo(() => {
+    if (feeText === null) return null
+    const parsed = parseDefaultFeeInput(feeText)
+    return parsed.ok ? null : parsed.error
+  }, [feeText])
+  const feeError = feeTextError ?? issuesByField.get('fee') ?? null
+  const feeWarning = feeError === null ? deliveryFeeWarning(draft.fee, suggestedFee) : null
 
   // Seed the suggested fee once it is known. The dialog used to hold the form
   // back until the read resolved; now the form is already on screen and this
@@ -313,6 +325,10 @@ export function DeliveryOrderForm({
   }
 
   const onSubmit = async () => {
+    if (feeTextError) {
+      toast.error(feeTextError)
+      return
+    }
     if (issues.length > 0) {
       toast.error(issues[0]!.message)
       return
@@ -637,13 +653,27 @@ export function DeliveryOrderForm({
                   id="fee"
                   inputMode="numeric"
                   className="h-11 tabular-nums"
-                  value={String(draft.fee)}
+                  value={feeText ?? String(draft.fee)}
                   onChange={(e) => {
-                    const n = Number.parseInt(e.target.value.replace(/\D/g, ''), 10)
+                    const raw = e.target.value
                     feeTouched.current = true
-                    dispatch({ type: 'setFee', value: Number.isFinite(n) ? n : 0 })
+                    setFeeText(raw)
+                    const parsed = parseDefaultFeeInput(raw)
+                    if (parsed.ok) dispatch({ type: 'setFee', value: parsed.value })
                   }}
+                  aria-invalid={feeError !== null}
+                  aria-describedby={feeError ? 'fee-error' : feeWarning ? 'fee-warning' : undefined}
                 />
+                {feeError && (
+                  <p id="fee-error" className="text-xs text-destructive">
+                    {feeError}
+                  </p>
+                )}
+                {feeWarning && (
+                  <p id="fee-warning" role="status" className="text-xs text-status-warning-fg">
+                    {feeWarning}
+                  </p>
+                )}
                 <p className="text-xs text-muted-fg">
                   Sugerido: <span className={MONEY}>{formatMoney(suggestedFee)}</span>
                 </p>
@@ -826,7 +856,7 @@ export function DeliveryOrderForm({
               type="button"
               className={cn(PILL_BUTTON, 'bg-btn px-5 text-btn-foreground shadow-glow hover:bg-btn/90')}
               onClick={() => void onSubmit()}
-              disabled={issues.length > 0 || submitting || lookupPending}
+              disabled={issues.length > 0 || feeTextError !== null || submitting || lookupPending}
             >
               {submitting ? (
                 <>

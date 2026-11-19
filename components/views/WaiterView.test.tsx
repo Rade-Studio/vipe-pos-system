@@ -827,6 +827,28 @@ describe("WaiterView — sending through the API (T8b)", () => {
     expect(env.toastFn).toHaveBeenCalledWith(expect.objectContaining({ title: "Productos adicionales enviados" }))
   })
 
+  it("creates a new order once the table's last order is paid and no longer listed (H-046)", async () => {
+    env.orderGetByStatus.mockResolvedValue([orderDto("o-1", "t-1")])
+    renderView()
+    await flush()
+    env.orderGetByStatus.mockResolvedValue([])
+    await act(async () => {
+      await queryClient.invalidateQueries({ queryKey: ["orders"] })
+    })
+    await flush()
+    await act(async () => {
+      screen.getByText("Mesa 1").click()
+    })
+    await flush()
+    await act(async () => {
+      screen.getByRole("button", { name: /Enviar/ }).click()
+    })
+    await flush()
+
+    expect(env.addItems).not.toHaveBeenCalledWith("o-1", expect.anything())
+    expect(env.orderCreate).toHaveBeenCalledTimes(1)
+  })
+
   it("reads the open orders in ONE request for the three statuses", async () => {
     renderView()
     await flush()

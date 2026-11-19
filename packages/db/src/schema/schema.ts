@@ -53,6 +53,7 @@ export const cashRegisters = pgTable("cash_registers", {
 	index("idx_cash_registers_opened_by").using("btree", table.openedBy.asc().nullsLast().op("uuid_ops")),
 	index("idx_cash_registers_restaurant_id").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops")),
 	uniqueIndex("one_open_register_per_restaurant").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops")).where(sql`((status)::text = 'open'::text)`),
+	check("cash_registers_initial_cash_whole_pesos", sql`(initial_cash >= (0)::numeric) AND (initial_cash = trunc(initial_cash))`),
 	foreignKey({
 			columns: [table.restaurantId, table.openedBy],
 			foreignColumns: [profiles.restaurantId, profiles.id],

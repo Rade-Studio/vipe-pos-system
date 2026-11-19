@@ -621,7 +621,7 @@ describe("payment toasts (T9 PRESERVE: driven by the API result and the error ki
     await submitCashPayment()
 
     await waitFor(() =>
-      expect(toast.success).toHaveBeenCalledWith("Esta orden ya estaba pagada. Mostrando factura."),
+      expect(toast.success).toHaveBeenCalledWith("Pago registrado. Esta orden ya estaba pagada; se muestra su factura."),
     )
     expect(toast.warning).toHaveBeenCalledWith(
       "La caja no tenía efectivo suficiente para el cambio; registra el ingreso de efectivo",

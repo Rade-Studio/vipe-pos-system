@@ -21,6 +21,15 @@ interface PartialPaymentDialogProps {
    * cashier cannot trigger a second split before the first one lands.
    */
   busy?: boolean
+  /** The parent order's tax and tip percentages: the partial order is charged with both (H-067). */
+  taxPercentage?: number
+  tipPercentage?: number
+  /**
+   * F5: the order has promotions or discounts. The figure is at list price
+   * (split_order moves the line discounts when it runs, and no preview prices
+   * a subset of a sent order), so it is labelled as before promotions.
+   */
+  hasDiscounts?: boolean
 }
 
 export function PartialPaymentDialog({
@@ -29,6 +38,9 @@ export function PartialPaymentDialog({
   tableItems = [],
   onCreatePartialOrder,
   busy = false,
+  taxPercentage = 0,
+  tipPercentage = 0,
+  hasDiscounts = false,
 }: PartialPaymentDialogProps) {
   const [selectedItems, setSelectedItems] = useState<Record<string, number>>({})
   const [quantities, setQuantities] = useState<Record<string, number>>({})
@@ -215,12 +227,12 @@ export function PartialPaymentDialog({
             <div className="text-center py-8 text-muted-foreground">No hay productos disponibles</div>
           )}
 
-          <div className="mt-4 p-3 bg-muted/20 rounded-md">
-            <div className="flex justify-between font-bold">
-              <span>Total Seleccionado:</span>
-              <span>{formatCurrency(calculateSelectedTotal())}</span>
-            </div>
-          </div>
+          <PartialTotals
+            subtotal={calculateSelectedTotal()}
+            taxPercentage={taxPercentage}
+            tipPercentage={tipPercentage}
+            hasDiscounts={hasDiscounts}
+          />
         </div>
 
         <DialogFooter>
@@ -236,5 +248,55 @@ export function PartialPaymentDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+/**
+ * What the partial order will charge: the server computes its tax and the
+ * suggested tip on its own subtotal, each rounded to whole pesos (H-067).
+ */
+function PartialTotals({
+  subtotal,
+  taxPercentage,
+  tipPercentage,
+  hasDiscounts,
+}: {
+  subtotal: number
+  taxPercentage: number
+  tipPercentage: number
+  hasDiscounts: boolean
+}) {
+  const tax = Math.round((subtotal * taxPercentage) / 100)
+  const tip = Math.round((subtotal * tipPercentage) / 100)
+  return (
+    <div className="mt-4 space-y-1 rounded-md bg-muted/20 p-3 text-sm">
+      {(taxPercentage > 0 || tipPercentage > 0) && (
+        <div className="flex justify-between">
+          <span>Productos seleccionados</span>
+          <span data-testid="partial-subtotal">{formatCurrency(subtotal)}</span>
+        </div>
+      )}
+      {taxPercentage > 0 && (
+        <div className="flex justify-between">
+          <span>Impuestos {taxPercentage} %</span>
+          <span data-testid="partial-tax">{formatCurrency(tax)}</span>
+        </div>
+      )}
+      {tipPercentage > 0 && (
+        <div className="flex justify-between">
+          <span>Propina sugerida {tipPercentage} %</span>
+          <span data-testid="partial-tip">{formatCurrency(tip)}</span>
+        </div>
+      )}
+      <div className="flex justify-between text-base font-bold">
+        <span>{hasDiscounts ? "Se cobrará antes de promociones:" : "Se cobrará:"}</span>
+        <span data-testid="partial-total">{formatCurrency(subtotal + tax + tip)}</span>
+      </div>
+      {hasDiscounts && (
+        <p role="note" className="text-xs text-muted-foreground">
+          Esta cuenta tiene promociones o descuentos: se restan al crear la orden parcial. El valor exacto lo ves en el cobro.
+        </p>
+      )}
+    </div>
   )
 }

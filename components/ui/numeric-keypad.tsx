@@ -46,6 +46,14 @@ export function NumericKeypad({
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Keys typed into another field belong to that field, not to the amount.
+      const target = e.target as HTMLElement | null
+      if (
+        target instanceof HTMLElement &&
+        (target.closest("input, textarea, select") || target.isContentEditable)
+      ) {
+        return
+      }
       if (e.key >= "0" && e.key <= "9") {
         if (value.length < maxLength) {
           onValueChange(value + e.key);
@@ -85,7 +93,7 @@ export function NumericKeypad({
           .
         </Button>
       ) : (
-        <Button type="button" variant="outline" className="h-12 text-lg font-medium" onClick={handleClear}>
+        <Button type="button" variant="outline" className="h-12 text-lg font-medium" onClick={handleClear} aria-label="Limpiar">
           <X className="h-5 w-5" />
         </Button>
       )}
@@ -94,7 +102,7 @@ export function NumericKeypad({
         0
       </Button>
 
-      <Button type="button" variant="outline" className="h-12 text-lg font-medium" onClick={handleBackspace}>
+      <Button type="button" variant="outline" className="h-12 text-lg font-medium" onClick={handleBackspace} aria-label="Borrar">
         <Backspace className="h-5 w-5" />
       </Button>
 

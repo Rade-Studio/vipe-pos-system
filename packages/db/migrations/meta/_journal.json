@@ -267,6 +267,13 @@
       "when": 1793928881411,
       "tag": "0039_carta_admin",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1793932481411,
+      "tag": "0040_register_initial_cash_whole_pesos",
+      "breakpoints": true
     }
   ]
 }

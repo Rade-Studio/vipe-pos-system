@@ -225,6 +225,17 @@ describe('courierStatusLine', () => {
   })
 })
 
+describe('closedTodayLine — earlier unpaid deliveries (F6)', () => {
+  it('names the delivered ones from earlier days still to collect, apart from today', () => {
+    expect(
+      closedTodayLine({ deliveredCount: 2, cancelledCount: 1, failedCount: 0, averageDeliveryMinutes: 25, pendingFromEarlierDays: 1 }).counts,
+    ).toBe('2 entregados · 1 cancelado · 0 fallidos · 1 por cobrar de días anteriores')
+    expect(
+      closedTodayLine({ deliveredCount: 2, cancelledCount: 1, failedCount: 0, averageDeliveryMinutes: 25, pendingFromEarlierDays: 0 }).counts,
+    ).toBe('2 entregados · 1 cancelado · 0 fallidos')
+  })
+})
+
 describe('closedTodayLine', () => {
   it('splits delivered and cancelled, adds failed and the average', () => {
     expect(closedTodayLine({ deliveredCount: 21, cancelledCount: 2, failedCount: 1, averageDeliveryMinutes: 34 })).toEqual({

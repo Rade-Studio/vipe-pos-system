@@ -952,7 +952,7 @@
             "description": "Not an admin."
           },
           "422": {
-            "description": "422 with `code` one of promotion_invalid, discount_required, discount_percentage_range, buy_quantity_invalid, pay_quantity_invalid, rest_discount_invalid, combo_price_invalid, combo_groups_count, combo_group_empty, min_subtotal_invalid, max_discount_invalid, time_window_invalid, days_of_week_invalid, channels_invalid, max_uses_invalid, end_before_start, unknown_target; `message` lists `<field>: <code>`. Nothing is saved."
+            "description": "422 with `code` one of promotion_invalid, discount_required, discount_percentage_range, buy_quantity_invalid, pay_quantity_invalid, rest_discount_invalid, combo_price_invalid, combo_groups_count, combo_group_empty, min_subtotal_invalid, max_discount_invalid, time_window_invalid, days_of_week_invalid, channels_invalid, max_uses_invalid, end_before_start, unknown_target, discount_exceeds_price, discount_percentage_full; `message` lists `<field>: <code>`. Nothing is saved."
           }
         },
         "security": [
@@ -1111,7 +1111,7 @@
             "description": ""
           },
           "422": {
-            "description": "422 with `code` one of promotion_invalid, discount_required, discount_percentage_range, buy_quantity_invalid, pay_quantity_invalid, rest_discount_invalid, combo_price_invalid, combo_groups_count, combo_group_empty, min_subtotal_invalid, max_discount_invalid, time_window_invalid, days_of_week_invalid, channels_invalid, max_uses_invalid, end_before_start, unknown_target; `message` lists `<field>: <code>`. Nothing is saved."
+            "description": "422 with `code` one of promotion_invalid, discount_required, discount_percentage_range, buy_quantity_invalid, pay_quantity_invalid, rest_discount_invalid, combo_price_invalid, combo_groups_count, combo_group_empty, min_subtotal_invalid, max_discount_invalid, time_window_invalid, days_of_week_invalid, channels_invalid, max_uses_invalid, end_before_start, unknown_target, discount_exceeds_price, discount_percentage_full; `message` lists `<field>: <code>`. Nothing is saved."
           }
         },
         "security": [
@@ -11318,7 +11318,9 @@
           },
           "price": {
             "type": "number",
-            "minimum": 0
+            "minimum": 0,
+            "exclusiveMinimum": true,
+            "description": "List price; greater than 0 (H-021)."
           },
           "categoryId": {
             "type": "string",
@@ -11390,7 +11392,9 @@
           },
           "price": {
             "type": "number",
-            "minimum": 0
+            "minimum": 0,
+            "exclusiveMinimum": true,
+            "description": "List price; greater than 0 (H-021)."
           },
           "categoryId": {
             "type": "string",
@@ -16587,8 +16591,9 @@
         "type": "object",
         "properties": {
           "initialCash": {
-            "type": "number",
-            "minimum": 0
+            "type": "integer",
+            "minimum": 0,
+            "description": "Whole pesos (H-061)."
           }
         },
         "required": [
@@ -16818,8 +16823,9 @@
         "type": "object",
         "properties": {
           "amount": {
-            "type": "number",
-            "minimum": 0.01
+            "type": "integer",
+            "minimum": 1,
+            "description": "Whole pesos (H-068)."
           },
           "type": {
             "type": "string",
@@ -21748,7 +21754,8 @@
           },
           "deliveryFee": {
             "type": "integer",
-            "description": "Whole COP pesos; >= 0 validated by create_delivery_order."
+            "maximum": 200000,
+            "description": "Whole COP pesos; >= 0 validated by create_delivery_order; above 200000 is a 422 from the API."
           },
           "paymentMode": {
             "type": "string",
@@ -22064,13 +22071,18 @@
             "type": "integer",
             "nullable": true,
             "description": "Average dispatched_at → delivered_at of the delivered ones, rounded minutes; null without any."
+          },
+          "pendingFromEarlierDays": {
+            "type": "integer",
+            "description": "Delivered deliveries from earlier days whose order is still unpaid (H-071); they stay on the board, apart from the counts of today."
           }
         },
         "required": [
           "deliveredCount",
           "cancelledCount",
           "failedCount",
-          "averageDeliveryMinutes"
+          "averageDeliveryMinutes",
+          "pendingFromEarlierDays"
         ]
       },
       "DeliveryOrderWithBill": {

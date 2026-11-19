@@ -310,6 +310,10 @@ export function DishForm({
       if (isNaN(price)) {
         throw new Error("El precio debe ser un número válido")
       }
+      // H-021: a dish is never sold at $0 (the API refuses it too).
+      if (price <= 0) {
+        throw new Error("El precio debe ser mayor que $ 0")
+      }
 
       // camelCase body; empty text and "no category" are stored as null.
       const dishData = {
@@ -424,7 +428,7 @@ export function DishForm({
                   type="number"
                   key="price"
                   step="1"
-                  min="0"
+                  min="1"
                   value={formData.price}
                   onChange={handleChange}
                   required

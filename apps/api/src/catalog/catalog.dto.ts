@@ -158,7 +158,8 @@ export const menuTreeQuerySchema = z.strictObject({ channel: z.enum(ORDER_CHANNE
 export const createDishSchema = z.strictObject({
   name: z.string().trim().min(1).max(100),
   description: nullableText.optional(),
-  price: money,
+  /** H-021: a dish is never sold at $0. */
+  price: money.positive(),
   categoryId: z.guid().nullable().optional(),
   subcategoryId: z.guid().nullable().optional(),
   imageUrl: nullableText.optional(),
@@ -211,7 +212,7 @@ export class Dish {
 export class CreateDishRequest {
   @ApiProperty({ maxLength: 100 }) name!: string;
   @ApiPropertyOptional({ type: String, nullable: true }) description?: string | null;
-  @ApiProperty({ minimum: 0 }) price!: number;
+  @ApiProperty({ minimum: 0, exclusiveMinimum: true, description: 'List price; greater than 0 (H-021).' }) price!: number;
   @ApiPropertyOptional({ type: String, format: 'uuid', nullable: true }) categoryId?: string | null;
   @ApiPropertyOptional({
     type: String,
@@ -228,7 +229,7 @@ export class CreateDishRequest {
 export class UpdateDishRequest {
   @ApiPropertyOptional({ maxLength: 100 }) name?: string;
   @ApiPropertyOptional({ type: String, nullable: true }) description?: string | null;
-  @ApiPropertyOptional({ minimum: 0 }) price?: number;
+  @ApiPropertyOptional({ minimum: 0, exclusiveMinimum: true, description: 'List price; greater than 0 (H-021).' }) price?: number;
   @ApiPropertyOptional({ type: String, format: 'uuid', nullable: true }) categoryId?: string | null;
   @ApiPropertyOptional({
     type: String,
@@ -322,6 +323,8 @@ export const PROMOTION_ERROR_CODES = [
   'max_uses_invalid',
   'end_before_start',
   'unknown_target',
+  'discount_exceeds_price',
+  'discount_percentage_full',
 ] as const;
 export type PromotionErrorCode = (typeof PROMOTION_ERROR_CODES)[number];
 

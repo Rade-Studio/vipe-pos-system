@@ -67,7 +67,7 @@ export function WithdrawCashDialog({ open, onOpenChange, onSuccess }: WithdrawCa
   }, [amount])
 
   const handleAmountChange = (value: string) => {
-    setAmount(value)
+    setAmount(value.replace(/\D/g, ""))
     setError(null)
   }
 
@@ -149,7 +149,7 @@ export function WithdrawCashDialog({ open, onOpenChange, onSuccess }: WithdrawCa
 
           {/* Teclado numérico siempre visible */}
           <div className="border rounded-md p-4">
-            <NumericKeypad value={amount} onValueChange={handleAmountChange} allowDecimal={true} className="w-full" />
+            <NumericKeypad value={amount} onValueChange={handleAmountChange} allowDecimal={false} className="w-full" />
           </div>
 
           <div className="space-y-2">

@@ -265,7 +265,7 @@ export function computeSurplusAsTip(
 // -----------------------------------------------------------
 
 export interface PaymentDraftView extends PaymentState {
-  /** `canSubmit && !submitting && no-in-progress-line && no-method-selected`. */
+  /** `canSubmit && !submitting && no-in-progress-line && no-method-selected`; a past error does not block. */
   canConfirm: boolean
   /** True only when there is cash change the cashier can convert to tip. */
   showSurplusAsTip: boolean
@@ -291,8 +291,9 @@ export function selectView(
     methods,
   })
   const hasInProgressLine = state.selectedMethodId !== null || state.amountInput !== ''
-  const canConfirm =
-    base.canSubmit && !state.submitting && !hasInProgressLine && state.lastError === null
+  // A failed submit never blocks the retry (H-065): the key is kept, so the
+  // server answers already_paid when the first attempt did go through.
+  const canConfirm = base.canSubmit && !state.submitting && !hasInProgressLine
   return {
     ...base,
     canConfirm,

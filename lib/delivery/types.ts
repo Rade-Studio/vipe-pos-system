@@ -131,6 +131,8 @@ export interface ClosedTodaySummary {
   failedCount: number
   /** Rounded minutes from dispatch to delivery; null without deliveries. */
   averageDeliveryMinutes: number | null
+  /** F6: delivered on an earlier day and still unpaid; on the board, not counted as today's. */
+  pendingFromEarlierDays?: number
 }
 
 // -----------------------------------------------------------

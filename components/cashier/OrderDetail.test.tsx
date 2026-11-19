@@ -33,7 +33,7 @@ import type { CartItem } from "@/types"
 const money = (amount: number) => formatCurrency(amount)
 const off = (amount: number) => `−${formatCurrency(amount)}`
 
-function renderDetail(order: CashierOrder = toCashierOrder(mesa7())) {
+function renderDetail(order: CashierOrder = toCashierOrder(mesa7()), onUndoSplit?: () => void) {
   const entry = {
     key: "table:t-7",
     kind: "table",
@@ -54,7 +54,13 @@ function renderDetail(order: CashierOrder = toCashierOrder(mesa7())) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={client}>
-      <OrderDetail entry={entry} items={items} totals={entryTotals([order])} onReprint={() => {}} />
+      <OrderDetail
+        entry={entry}
+        items={items}
+        totals={entryTotals([order])}
+        onReprint={() => {}}
+        onUndoSplit={onUndoSplit}
+      />
     </QueryClientProvider>,
   )
 }
@@ -140,5 +146,22 @@ describe("OrderDetail — discounts (S13)", () => {
     fireEvent.click(within(alert).getByRole("button", { name: "Reintentar" }))
     expect(await screen.findByText("Subtotal (precio de lista)")).toBeInTheDocument()
     expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+  })
+})
+
+describe("OrderDetail — Eliminar a partial order (H-067)", () => {
+  it("asks for confirmation before returning the products to the original order", async () => {
+    const onUndoSplit = vi.fn()
+    renderDetail(undefined, onUndoSplit)
+    fireEvent.click(screen.getByRole("button", { name: "Eliminar" }))
+    expect(onUndoSplit).not.toHaveBeenCalled()
+    const dialog = await screen.findByRole("alertdialog")
+    expect(dialog).toHaveTextContent("¿Eliminar esta orden parcial?")
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }))
+    expect(onUndoSplit).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole("button", { name: "Eliminar" }))
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Sí, eliminar" }))
+    expect(onUndoSplit).toHaveBeenCalledTimes(1)
   })
 })

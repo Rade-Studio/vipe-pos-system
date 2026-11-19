@@ -24,6 +24,7 @@
 import { lineKey, type LineModifier } from '@/lib/modifiers/rules'
 import type { CartCombo, PreviewDraft } from '@/lib/promotions/waiter'
 import { normalizePhone } from './phone'
+import { formatCurrency } from '@/utils/helpers'
 import type {
   CreateDeliveryAddressInput,
   CreateDeliveryComboInput,
@@ -395,11 +396,23 @@ export interface DraftValidationIssue {
  *   - customerName required for a NEW customer (server CHECK enforces)
  *   - addressChoice must be existing{id} or new{addressLine non-empty}
  *   - cartLines must be non-empty (server CHECK enforces 1..99)
- *   - fee must be >= 0 (server CHECK enforces)
+ *   - fee must be >= 0 (server CHECK enforces) and <= DELIVERY_FEE_MAX (the API enforces)
  *   - cashChangeFor, when set, must be >= bill total (matches what the
  *     courier can carry back; below this, the courier would have to
  *     hand back negative change)
  */
+/** Upper limit of one delivery fee in whole pesos (H-075); the API enforces the same. */
+export const DELIVERY_FEE_MAX = 200_000
+
+/**
+ * H-075: a fee more than three times the suggested one is allowed but flagged,
+ * so a slip of the finger ("50000" for "5000") is seen before sending.
+ */
+export function deliveryFeeWarning(fee: number, suggestedFee: number): string | null {
+  if (suggestedFee <= 0 || fee <= suggestedFee * 3) return null
+  return `Es muy por encima de la tarifa sugerida (${formatCurrency(suggestedFee)}); revisa antes de crear el domicilio`
+}
+
 export function validateDraft(draft: OrderDraft, taxPct = 8, pricing?: DraftPricing | null): DraftValidationIssue[] {
   const issues: DraftValidationIssue[] = []
 
@@ -439,6 +452,8 @@ export function validateDraft(draft: OrderDraft, taxPct = 8, pricing?: DraftPric
   // fee >= 0 (defensive; the reducer also rejects negatives)
   if (!Number.isFinite(draft.fee) || !Number.isInteger(draft.fee) || draft.fee < 0) {
     issues.push({ field: 'fee', message: 'El domicilio no puede tener un valor negativo' })
+  } else if (draft.fee > DELIVERY_FEE_MAX) {
+    issues.push({ field: 'fee', message: `El domicilio no puede superar ${formatCurrency(DELIVERY_FEE_MAX)}` })
   }
 
   // cashChangeFor >= total when set

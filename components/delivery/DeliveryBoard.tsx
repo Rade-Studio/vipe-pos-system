@@ -38,6 +38,7 @@ import { DeliveryCard } from './DeliveryCard'
 import { NewDeliveryDialog } from './NewDeliveryDialog'
 import { DispatchDialog } from './DispatchDialog'
 import { FailDialog } from './FailDialog'
+import { DeliverConfirmDialog } from './DeliverConfirmDialog'
 import { VoidFlow } from '@/components/voids/VoidFlow'
 import type { VoidTarget } from '@/components/voids/flow'
 import { CouriersRail } from './CouriersRail'
@@ -107,7 +108,7 @@ const ACTION_SUCCESS_TOAST: Record<DeliveryAction, string> = {
   cancel: 'Domicilio cancelado',
 }
 
-type CardDialogKind = 'dispatch' | 'fail' | 'pay'
+type CardDialogKind = 'dispatch' | 'fail' | 'pay' | 'deliver'
 
 /** T25: how often the header re-checks the register (also on window focus). */
 export const REGISTER_POLL_MS = 60_000
@@ -310,6 +311,8 @@ export function DeliveryBoard({ role, operatorName, withRoleNav = false }: Deliv
     switch (action) {
       case 'dispatch':
       case 'fail':
+      case 'deliver':
+        // H-072: Entregado asks first and names a missing payment.
         setDialog({ kind: action, orderId })
         return
       case 'cancel': {
@@ -488,6 +491,19 @@ export function DeliveryBoard({ role, operatorName, withRoleNav = false }: Deliv
             void closeDialogOnSuccess(
               transition({ orderId: dialogRow.delivery.orderId, action: 'dispatch', courierId, ...details }),
             )
+          }
+        />
+      )}
+      {dialogRow && dialog?.kind === 'deliver' && (
+        <DeliverConfirmDialog
+          open
+          onOpenChange={closeDialog}
+          orderSummary={`${deliveryOrderRef(dialogRow.delivery)} · ${dialogRow.delivery.customerName}`}
+          paymentMode={dialogRow.delivery.paymentMode}
+          isPaid={dialogRow.isPaid}
+          isPending={dialogPending}
+          onConfirm={() =>
+            void closeDialogOnSuccess(transition({ orderId: dialogRow.delivery.orderId, action: 'deliver' }))
           }
         />
       )}

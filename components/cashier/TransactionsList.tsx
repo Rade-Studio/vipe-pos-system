@@ -80,12 +80,14 @@ export function TransactionsList({ registerLoading = false }: TransactionsListPr
   )
   const totalsByMethodMap = useMemo(() => totalsByMethod(payments, catalog), [payments, catalog])
 
-  // Per-method totals for the summary cards. One card per method in the
-  // catalog (even when amount is 0) so the cashier sees the full picker.
+  // Per-method totals for the summary cards (H-018): every active method
+  // (even at 0) and every method with movements in this register, in catalog
+  // order. An inactive method without movements is left out.
   const methodCards = useMemo(() => {
     const cards: Array<{ id: string; name: string; amount: number }> = []
-    for (const row of catalog) {
+    for (const row of [...catalog].sort((a, b) => a.sortOrder - b.sortOrder)) {
       const bucket = totalsByMethodMap[row.id]
+      if (!row.isActive && !bucket?.tendersCount) continue
       cards.push({
         id: row.id,
         name: row.name,
@@ -258,8 +260,8 @@ export function TransactionsList({ registerLoading = false }: TransactionsListPr
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
-        {methodCards.slice(0, 4).map((card) => (
-          <Card key={card.id}>
+        {methodCards.map((card) => (
+          <Card key={card.id} data-testid="method-card" data-method={card.name}>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium">{card.name}</CardTitle>
             </CardHeader>
