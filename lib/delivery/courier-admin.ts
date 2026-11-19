@@ -20,7 +20,9 @@
  *       `DEFAULT_FEE_CONFIG_KEY`.
  */
 
-import { normalizePhone } from './phone'
+import { formatCurrency } from '@/utils/helpers'
+import { DELIVERY_FEE_MAX } from './order-draft'
+import { COLOMBIAN_PHONE_ERROR, normalizeColombianPhone, normalizePhone } from './phone'
 import type { Courier } from './types'
 
 export const MAX_COURIER_NAME_LEN = 80
@@ -35,7 +37,11 @@ export interface CourierPayload {
   phone: string | null
 }
 
-export function validateCourierInput(input: CourierInput): string[] {
+/**
+ * `previousPhone`: the courier's stored phone when editing. Keeping it
+ * unchanged is allowed even when it predates the Colombian rule (H-038).
+ */
+export function validateCourierInput(input: CourierInput, previousPhone?: string | null): string[] {
   const errors: string[] = []
   const name = input.name.trim()
   if (name.length === 0) {
@@ -43,20 +49,22 @@ export function validateCourierInput(input: CourierInput): string[] {
   } else if (name.length > MAX_COURIER_NAME_LEN) {
     errors.push(`El nombre no puede tener más de ${MAX_COURIER_NAME_LEN} caracteres`)
   }
-  if (input.phone.trim().length > 0 && normalizePhone(input.phone) === null) {
-    errors.push('El teléfono debe tener entre 7 y 15 dígitos')
+  const phone = input.phone.trim()
+  const unchanged = previousPhone != null && phone.length > 0 && normalizePhone(phone) === previousPhone
+  if (phone.length > 0 && !unchanged && normalizeColombianPhone(phone) === null) {
+    errors.push(COLOMBIAN_PHONE_ERROR)
   }
   return errors
 }
 
-export function toCourierPayload(input: CourierInput): CourierPayload {
-  const errors = validateCourierInput(input)
+export function toCourierPayload(input: CourierInput, previousPhone?: string | null): CourierPayload {
+  const errors = validateCourierInput(input, previousPhone)
   if (errors.length > 0) {
     throw new Error(`toCourierPayload: ${errors.join('; ')}`)
   }
   return {
     name: input.name.trim(),
-    phone: input.phone.trim().length === 0 ? null : normalizePhone(input.phone),
+    phone: input.phone.trim().length === 0 ? null : (normalizeColombianPhone(input.phone) ?? normalizePhone(input.phone)),
   }
 }
 
@@ -89,6 +97,7 @@ export function parseDefaultFeeInput(raw: string): DefaultFeeParseResult {
   if (!FEE_INPUT_RE.test(trimmed)) return { ok: false, error }
   const value = Number(trimmed.replace(/\./g, ''))
   if (!Number.isSafeInteger(value)) return { ok: false, error }
+  if (value > DELIVERY_FEE_MAX) return { ok: false, error: `El domicilio no puede superar ${formatCurrency(DELIVERY_FEE_MAX)}` }
   return { ok: true, value }
 }
 

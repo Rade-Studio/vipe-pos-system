@@ -274,6 +274,20 @@
       "when": 1793932481411,
       "tag": "0040_register_initial_cash_whole_pesos",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1793936081411,
+      "tag": "0041_payment_methods_keep_one_active",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1793939681411,
+      "tag": "0042_staff_email_change",
+      "breakpoints": true
     }
   ]
 }

@@ -89,10 +89,9 @@ describe("WaiterForm", () => {
     expect(onSuccess).not.toHaveBeenCalled()
   })
 
-  it("edits through PATCH without the email, which is read-only", async () => {
+  it("edits through PATCH without the email while it is unchanged", async () => {
     const onSuccess = vi.fn()
     render(<WaiterForm waiter={member} onSuccess={onSuccess} onCancel={vi.fn()} />)
-    expect(screen.getByLabelText("Email")).toHaveAttribute("readonly")
     type("Nombre completo", "Ana María")
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Actualizar" }))
@@ -124,6 +123,67 @@ describe("WaiterForm", () => {
     expect(staff.setStaffPassword).toHaveBeenCalledWith("p-1", "nueva-clave-1")
     expect(toastMock).toHaveBeenCalledWith(expect.objectContaining({ title: "Contraseña actualizada" }))
     expect(staff.updateStaff).not.toHaveBeenCalled()
+  })
+
+  it("changes the login email of a member (H-029)", async () => {
+    const onSuccess = vi.fn()
+    render(<WaiterForm waiter={member} onSuccess={onSuccess} onCancel={vi.fn()} />)
+    expect(screen.getByLabelText("Email")).not.toHaveAttribute("readonly")
+    type("Email", "ana.maria@vipe.local")
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Actualizar" }))
+    })
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled())
+    expect(staff.updateStaff).toHaveBeenCalledWith("p-1", {
+      email: "ana.maria@vipe.local",
+      fullName: "Ana",
+      username: "ana",
+      active: true,
+      role: "waiter",
+    })
+  })
+
+  it("refuses an invalid new email before calling the API", async () => {
+    render(<WaiterForm waiter={member} onSuccess={vi.fn()} onCancel={vi.fn()} />)
+    type("Email", "no-es@correo")
+    // The browser's own type=email check would block the click; submit the form to reach the form's rule.
+    await act(async () => {
+      fireEvent.submit(screen.getByRole("button", { name: "Actualizar" }).closest("form")!)
+    })
+    expect(screen.getByText("Ingresa un correo electrónico válido")).toBeInTheDocument()
+    expect(staff.updateStaff).not.toHaveBeenCalled()
+  })
+
+  it("keeps the email read-only for a legacy member without login", () => {
+    render(<WaiterForm waiter={{ ...member, userId: null }} onSuccess={vi.fn()} onCancel={vi.fn()} />)
+    expect(screen.getByLabelText("Email")).toHaveAttribute("readonly")
+  })
+
+  it("asks for letters plus a number, symbol or space and refuses common passwords (H-029)", async () => {
+    render(<WaiterForm onSuccess={vi.fn()} onCancel={vi.fn()} />)
+    type("Nombre completo", "Ana")
+    type("Nombre de usuario", "ana")
+    type("Email", "ana@vipe.local")
+    const create = async () => {
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Crear" }))
+      })
+    }
+    type("Contraseña", "sololetras")
+    await create()
+    expect(screen.getByText("La contraseña debe combinar letras con números, símbolos o espacios")).toBeInTheDocument()
+    type("Contraseña", "Password123")
+    await create()
+    expect(screen.getByText("La contraseña es demasiado común; elige otra")).toBeInTheDocument()
+    expect(staff.createStaffAccount).not.toHaveBeenCalled()
+
+    render(<WaiterForm waiter={member} onSuccess={vi.fn()} onCancel={vi.fn()} />)
+    type("Nueva contraseña", "12345678")
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Restablecer contraseña" }))
+    })
+    expect(screen.getAllByText("La contraseña debe combinar letras con números, símbolos o espacios").length).toBeGreaterThan(0)
+    expect(staff.setStaffPassword).not.toHaveBeenCalled()
   })
 
   it("hides the password reset for a legacy member without login (item 5)", () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatPhone, normalizePhone } from './phone'
+import { COLOMBIAN_PHONE_ERROR, formatPhone, normalizeColombianPhone, normalizePhone } from './phone'
 
 // -----------------------------------------------------------
 // normalizePhone
@@ -87,5 +87,39 @@ describe('formatPhone', () => {
 
   it('falls back to the raw value when the shape does not fit 3-3-4', () => {
     expect(formatPhone('123456789012345')).toBe('123456789012345')
+  })
+})
+// -----------------------------------------------------------
+// normalizeColombianPhone (H-074, H-038): the rule for NEW input
+// -----------------------------------------------------------
+
+describe('normalizeColombianPhone', () => {
+  it.each([
+    ['3101234567', '3101234567'],
+    ['+57 310 123 4567', '3101234567'],
+    ['(310) 123-4567', '3101234567'],
+    ['6011234567', '6011234567'],
+    ['601 123 4567', '6011234567'],
+    ['+57 604 123 4567', '6041234567'],
+    ['576011234567', '6011234567'],
+  ])('accepts %j as %j', (input, expected) => {
+    expect(normalizeColombianPhone(input)).toBe(expected)
+  })
+
+  it.each(['', 'abc', '1234567', '310123456', '31012345678', '2101234567', '6111234567', '601123456', '123456789012345', '+1 310 123 4567'])(
+    'rejects %j',
+    (input) => {
+      expect(normalizeColombianPhone(input)).toBeNull()
+    },
+  )
+
+  it('explains the rule in Spanish', () => {
+    expect(COLOMBIAN_PHONE_ERROR).toBe(
+      'Ingresa un celular de 10 dígitos que empiece por 3 o un fijo de 10 dígitos que empiece por 60 (por ejemplo 3101234567 o 6011234567)',
+    )
+  })
+
+  it('leaves normalizePhone (lookups of stored phones) on the 7..15 digit rule', () => {
+    expect(normalizePhone('1234567')).toBe('1234567')
   })
 })

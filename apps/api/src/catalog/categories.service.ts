@@ -1,6 +1,7 @@
 import { ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { eq, schema, sql } from '@vipe/db';
 import type { z } from 'zod';
+import { assertUniqueName } from '../common/duplicate-name';
 import { UnitOfWork } from '../db/unit-of-work';
 import { type Category, CATEGORY_MESSAGES, type createCategorySchema, type updateCategorySchema } from './catalog.dto';
 import { toCategory } from './catalog.mappers';
@@ -26,6 +27,7 @@ export class CategoriesService {
 
   /** Without sortOrder the category goes after the last one. */
   async create(input: z.infer<typeof createCategorySchema>): Promise<Category> {
+    await assertUniqueName(this.uow, 'categories', input.name);
     const sortOrder = input.sortOrder ?? sql`(SELECT COALESCE(max(sort_order) + 1, 0) FROM public.categories)`;
     const [row] = await this.uow.db
       .insert(categories)
@@ -35,6 +37,7 @@ export class CategoriesService {
   }
 
   async update(id: string, input: z.infer<typeof updateCategorySchema>): Promise<Category> {
+    await assertUniqueName(this.uow, 'categories', input.name, id);
     const [row] = await this.uow.db
       .update(categories)
       .set({ ...input, updatedAt: sql`now()` })

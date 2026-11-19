@@ -161,3 +161,30 @@ describe("TaxSettings · tipo de impuesto (caja-cierres S9)", () => {
     expect(config.save).not.toHaveBeenCalled()
   })
 })
+
+describe("TaxSettings · decimals (H-035)", () => {
+  it("accepts a tax with decimals, steps by 0.01 and saves it", async () => {
+    render(<TaxSettings />)
+    const tax = screen.getByLabelText("Impuesto")
+    expect(tax).toHaveAttribute("step", "0.01")
+    await act(async () => {
+      fireEvent.change(tax, { target: { value: "8.5" } })
+    })
+    expect(screen.getByTestId("tax-example")).toHaveTextContent("INC (8,5 %)")
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }))
+    })
+    expect(useConfigStore.getState().taxPercentage).toBe(8.5)
+    expect(saveConfigToDB).toHaveBeenCalledTimes(1)
+  })
+
+  it("rounds a typed value to two decimals when leaving the field", async () => {
+    render(<TaxSettings />)
+    const tax = screen.getByLabelText("Impuesto")
+    await act(async () => {
+      fireEvent.change(tax, { target: { value: "8.555" } })
+      fireEvent.blur(tax)
+    })
+    expect(tax).toHaveValue(8.56)
+  })
+})

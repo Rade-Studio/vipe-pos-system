@@ -18,6 +18,9 @@ import {
   type StaffMember,
   type StaffRole,
 } from "@/lib/api/staff"
+import { staffPasswordError } from "@/lib/api/staff-password"
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 const STAFF_ROLE_OPTIONS: { value: StaffRole; label: string }[] = [
   { value: "waiter", label: "Mesero" },
@@ -49,6 +52,11 @@ export function WaiterForm({ waiter, onSuccess, onCancel }: WaiterFormProps) {
   const [passwordError, setPasswordError] = useState<string | null>(null)
   const [resetting, setResetting] = useState(false)
 
+  // H-029: a member with a login can get a new login email; a legacy profile cannot.
+  const canEditEmail = !waiter || waiter.userId !== null
+  const emailChanged =
+    !!waiter && canEditEmail && formData.email.trim().toLowerCase() !== (waiter.email ?? "").trim().toLowerCase()
+
   const validateForm = () => {
     const newErrors: Record<string, string> = {}
 
@@ -60,13 +68,12 @@ export function WaiterForm({ waiter, onSuccess, onCancel }: WaiterFormProps) {
       newErrors.username = "El nombre de usuario es obligatorio"
     }
 
+    if ((!waiter || emailChanged) && !EMAIL_RE.test(formData.email.trim())) {
+      newErrors.email = "Ingresa un correo electrónico válido"
+    }
     if (!waiter) {
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
-        newErrors.email = "Ingresa un correo electrónico válido"
-      }
-      if (formData.password.length < 8) {
-        newErrors.password = "La contraseña debe tener al menos 8 caracteres"
-      }
+      const passwordIssue = staffPasswordError(formData.password)
+      if (passwordIssue) newErrors.password = passwordIssue
     }
 
     setErrors(newErrors)
@@ -96,8 +103,9 @@ export function WaiterForm({ waiter, onSuccess, onCancel }: WaiterFormProps) {
 
     try {
       if (waiter) {
-        // PATCH takes no email: the login email cannot change.
+        // The email goes only when it changed (H-029); the API answers 409 for one in use.
         await updateStaff(waiter.id, {
+          ...(emailChanged ? { email: formData.email.trim() } : {}),
           fullName: formData.full_name,
           username: formData.username,
           active: formData.active,
@@ -141,8 +149,9 @@ export function WaiterForm({ waiter, onSuccess, onCancel }: WaiterFormProps) {
 
   const handleResetPassword = async () => {
     if (!waiter) return
-    if (newPassword.length < 8) {
-      setPasswordError("La contraseña debe tener al menos 8 caracteres")
+    const passwordIssue = staffPasswordError(newPassword)
+    if (passwordIssue) {
+      setPasswordError(passwordIssue)
       return
     }
     setPasswordError(null)
@@ -204,8 +213,8 @@ export function WaiterForm({ waiter, onSuccess, onCancel }: WaiterFormProps) {
             value={formData.email}
             onChange={handleChange}
             placeholder="Email"
-            readOnly={!!waiter}
-            className={waiter ? "bg-muted" : undefined}
+            readOnly={!canEditEmail}
+            className={!canEditEmail ? "bg-muted" : undefined}
           />
           {errors.email && <p className="text-sm text-red-500">{errors.email}</p>}
         </div>
@@ -220,7 +229,7 @@ export function WaiterForm({ waiter, onSuccess, onCancel }: WaiterFormProps) {
               autoComplete="new-password"
               value={formData.password}
               onChange={handleChange}
-              placeholder="Mínimo 8 caracteres"
+              placeholder="8 o más, con letras y números"
             />
             {errors.password && <p className="text-sm text-red-500">{errors.password}</p>}
           </div>
@@ -261,7 +270,7 @@ export function WaiterForm({ waiter, onSuccess, onCancel }: WaiterFormProps) {
               autoComplete="new-password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="Mínimo 8 caracteres"
+              placeholder="8 o más, con letras y números"
             />
             <Button type="button" variant="outline" onClick={handleResetPassword} disabled={resetting}>
               Restablecer contraseña

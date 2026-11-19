@@ -6703,19 +6703,19 @@ export interface components {
         CreateCourierRequest: {
             /** @description Trimmed. */
             name: string;
-            /** @description Normalised like the web; blank or null clears it. */
+            /** @description Colombian mobile (3 + 9 digits) or landline (60 + 8 digits), +57 optional, normalised to 10 digits; blank or null clears it. 409 when an active courier already uses it. */
             phone?: string | null;
         };
         UpdateCourierRequest: {
             name?: string;
-            /** @description Blank or null clears it. */
+            /** @description Same rule as on create; blank or null clears it. 409 when another active courier uses it. */
             phone?: string | null;
             isActive?: boolean;
         };
         CreateDeliveryCustomer: {
             /** @description Existing customer; uuid and exclusive with phone, validated by create_delivery_order. */
             id?: string;
-            /** @description Looked up or registered by phone; 7..15 digits validated by create_delivery_order (not normalised). */
+            /** @description Looked up or registered by phone; a Colombian mobile (3 + 9 digits) or landline (60 + 8 digits), +57 optional, normalised to 10 digits (422 otherwise). */
             phone?: string;
             /** @description Required for a new customer (1..120 chars, validated by create_delivery_order); renames an existing one when different. */
             name?: string;
@@ -6929,6 +6929,7 @@ export interface components {
              * @description Trimmed and lower-cased; unique (409).
              */
             email: string;
+            /** @description Letters plus a number, symbol or space; common passwords are refused (422). */
             password: string;
             fullName: string;
             /** @enum {string} */
@@ -6938,6 +6939,11 @@ export interface components {
             active: boolean;
         };
         UpdateStaffRequest: {
+            /**
+             * Format: email
+             * @description New login email; trimmed and lower-cased; unique (409). Open sessions are kept.
+             */
+            email?: string;
             fullName?: string;
             /** @description Null or blank clears it. */
             username?: string | null;
@@ -6946,6 +6952,7 @@ export interface components {
             role?: "waiter" | "kitchen" | "cashier" | "delivery_operator";
         };
         SetStaffPasswordRequest: {
+            /** @description Letters plus a number, symbol or space; common passwords are refused (422). */
             password: string;
         };
         SetStaffPinRequest: {
@@ -14724,6 +14731,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description An active courier already uses the phone (H-038) or the name, folded for case, accents and spaces (H-022). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Invalid input or an RPC rejection (P0001, 22023) with its message verbatim and `code`. */
             422: {
                 headers: {
@@ -14765,6 +14779,13 @@ export interface operations {
                 content?: never;
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The courier would end up active (patched or reactivated) with the phone (H-038) or the name (H-022) of another active courier. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

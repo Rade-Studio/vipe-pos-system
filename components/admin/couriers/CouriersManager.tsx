@@ -50,7 +50,7 @@ import {
   validateCourierInput,
 } from "@/lib/delivery/courier-admin"
 import type { CourierInput } from "@/lib/delivery/courier-admin"
-import { formatPhone } from "@/lib/delivery/phone"
+import { formatPhone, normalizePhone } from "@/lib/delivery/phone"
 import { createSingleFlight, type SingleFlight } from "@/lib/payments/single-flight"
 import { toast } from "@/utils/toast"
 import { log } from "@/lib/log"
@@ -126,7 +126,11 @@ export function CouriersManager() {
   }
 
   const handleSave = async () => {
-    const errors = validateCourierInput(form)
+    // H-038: an unchanged stored phone may predate the Colombian rule; it is not resent.
+    const previousPhone = editing?.phone ?? null
+    const phoneChanged = normalizePhone(form.phone) !== previousPhone && !(form.phone.trim() === "" && previousPhone === null)
+    const errors = validateCourierInput(form, previousPhone)
+    if (duplicate) errors.push(`${duplicate.name} ya usa este teléfono. Usa otro número.`)
     setFormErrors(errors)
     if (errors.length > 0) return
     const target = editing
@@ -134,7 +138,7 @@ export function CouriersManager() {
       setSaving(true)
       try {
         if (target) {
-          await updateCourier(target.id, { name: form.name, phone: form.phone })
+          await updateCourier(target.id, phoneChanged ? { name: form.name, phone: form.phone } : { name: form.name })
           toast.success("Repartidor actualizado")
         } else {
           await createCourier(form)
@@ -283,7 +287,7 @@ export function CouriersManager() {
                 disabled={saving}
               />
             </div>
-            {duplicate && (
+            {duplicate && formErrors.length === 0 && (
               <p className="text-sm text-amber-600">
                 {duplicate.name} ya usa este teléfono.
               </p>

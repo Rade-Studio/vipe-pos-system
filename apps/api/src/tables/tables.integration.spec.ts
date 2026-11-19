@@ -410,6 +410,25 @@ describe('tables and waiters endpoints (Testcontainers, vipe_api)', () => {
       ]);
     });
   });
+
+  describe('duplicate numbers (H-022)', () => {
+    it('refuses a table number already used in the restaurant with a Spanish 409, writing nothing', async () => {
+      const before = await db('SELECT id, number FROM tables ORDER BY id');
+      const res = await adminA().post('/api/tables', { number: 1 });
+      expect(res.status).toBe(409);
+      expect(res.body).toMatchObject({ statusCode: 409, message: 'Ya existe la mesa 1' });
+      const renumbered = await adminA().patch(`/api/tables/${t.busy}`, { number: 1 });
+      expect(renumbered.status).toBe(409);
+      expect(renumbered.body.message).toBe('Ya existe la mesa 1');
+      expect(await db('SELECT id, number FROM tables ORDER BY id')).toEqual(before);
+    });
+
+    it('lets a table keep its number and reuse a number of another restaurant', async () => {
+      expect((await adminA().patch(`/api/tables/${t.free}`, { number: 1 })).status).toBe(200);
+      expect((await adminA().post('/api/tables', { number: 101 })).status).toBe(201);
+    });
+  });
+
 });
 
 async function seedTables(superuserUrl: string) {

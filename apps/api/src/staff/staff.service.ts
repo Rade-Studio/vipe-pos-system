@@ -91,10 +91,14 @@ export class StaffService {
     }
   }
 
-  /** Absent fields keep their value; a null or blank username clears it. */
+  /** Absent fields keep their value; a null or blank username clears it; `email` changes the login. */
   async update(id: string, input: z.infer<typeof updateStaffSchema>): Promise<StaffMember> {
     const username = input.username === undefined ? null : (input.username ?? '');
     try {
+      // H-029: the login email first; a duplicate rolls the whole request back.
+      if (input.email !== undefined) {
+        await this.uow.db.execute(sql`SELECT private.set_staff_email(${id}, ${input.email})`);
+      }
       await this.uow.db.execute(sql`
         SELECT private.update_staff_profile(${id}, ${input.fullName ?? null}, ${username},
                                             ${input.active ?? null}, ${input.role ?? null})`);

@@ -188,6 +188,10 @@ describe('staff endpoints (Testcontainers, vipe_api)', () => {
       [{ email: 'not-an-email' }, 'El correo electrónico no es válido'],
       [{ password: 'short' }, 'La contraseña debe tener al menos 8 caracteres'],
       [{ password: 'x'.repeat(129) }, 'La contraseña no cumple los requisitos de seguridad'],
+      // H-029: letters plus a number, symbol or space, and not a common password.
+      [{ password: 'abcdefgh' }, 'La contraseña debe combinar letras con números, símbolos o espacios'],
+      [{ password: '12345678' }, 'La contraseña debe combinar letras con números, símbolos o espacios'],
+      [{ password: 'Password123' }, 'La contraseña es demasiado común; elige otra'],
       [{ fullName: '   ' }, 'El nombre debe tener entre 1 y 100 caracteres'],
       [{ restaurantId: fixtures.restaurantB }, 'Solicitud inválida'],
     ])('answers 422 for %o with the Spanish message and creates nothing', async (override, message) => {
@@ -261,8 +265,34 @@ describe('staff endpoints (Testcontainers, vipe_api)', () => {
       expect(me.body.message).toBe('No active profile for this account');
     });
 
+    it('changes the login email (H-029): the new email logs in, the old one does not', async () => {
+      const member = await createMember();
+      const res = await adminA().patch(`/api/staff/${member.id}`, { email: '  Cambiado@A.test ' });
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ id: member.id, email: 'cambiado@a.test' });
+      expect((await login('cambiado@a.test')).status).toBe(200);
+      expect((await login(member.email)).status).toBe(401);
+      const [row] = await db<{ email: string }>('SELECT email FROM public.profiles WHERE id = $1', [member.id]);
+      expect(row.email).toBe('cambiado@a.test');
+    });
+
+    it('refuses an email in use with the Spanish 409 and an invalid one with 422, changing nothing (H-029)', async () => {
+      const member = await createMember({ fullName: 'Keep Me' });
+      const dup = await adminA().patch(`/api/staff/${member.id}`, { email: fixtures.waiterA.email.toUpperCase(), fullName: 'Changed' });
+      expect(dup.status).toBe(409);
+      expect(dup.body).toEqual({ statusCode: 409, error: 'Conflict', message: 'Ya existe una cuenta con ese correo electrónico' });
+      const bad = await adminA().patch(`/api/staff/${member.id}`, { email: 'no-es-correo' });
+      expect(bad.status).toBe(422);
+      expect(bad.body.message).toBe('El correo electrónico no es válido');
+      const [row] = await db<{ email: string; full_name: string }>(
+        'SELECT u.email::text AS email, p.full_name FROM public.profiles p JOIN public.users u ON u.id = p.user_id WHERE p.id = $1', [member.id]);
+      expect(row).toEqual({ email: member.email, full_name: 'Keep Me' });
+      expect((await login(member.email)).status).toBe(200);
+      expect((await adminA().patch(`/api/staff/${adminA2.profileId}`, { email: 'z@a.test' })).status).toBe(403);
+    });
+
     it('answers 422 for unknown fields and an invalid id', async () => {
-      expect((await adminA().patch(`/api/staff/${fixtures.waiterA.profileId}`, { email: 'x@a.test' })).status).toBe(422);
+      expect((await adminA().patch(`/api/staff/${fixtures.waiterA.profileId}`, { password: 'x' })).status).toBe(422);
       expect((await adminA().patch('/api/staff/not-a-uuid', { fullName: 'X' })).status).toBe(422);
     });
   });
@@ -289,6 +319,9 @@ describe('staff endpoints (Testcontainers, vipe_api)', () => {
       const short = await adminA().post(`/api/staff/${fixtures.waiterA.profileId}/password`, { password: 'short' });
       expect(short.status).toBe(422);
       expect(short.body.message).toBe('La contraseña debe tener al menos 8 caracteres');
+      const weak = await adminA().post(`/api/staff/${fixtures.waiterA.profileId}/password`, { password: 'soloLetras' });
+      expect(weak.status).toBe(422);
+      expect(weak.body.message).toBe('La contraseña debe combinar letras con números, símbolos o espacios');
       expect((await login(fixtures.waiterA.email)).status).toBe(200);
     });
   });

@@ -222,13 +222,72 @@ describe('delivery endpoints (Testcontainers, vipe_api)', () => {
       const before = await count('couriers');
       const badPhone = await adminA().post('/api/delivery/couriers', { name: 'X', phone: '123' });
       expect(badPhone.status).toBe(422);
-      expect(badPhone.body.message).toBe('phone: Phone must have 7 to 15 digits');
+      expect(badPhone.body.message).toBe('phone: Ingresa un celular de 10 dígitos que empiece por 3 o un fijo de 10 dígitos que empiece por 60 (por ejemplo 3101234567 o 6011234567)');
+      // H-038: a new phone must be a Colombian mobile or landline, even with 7..15 digits.
+      for (const phone of ['1234567', '2101234567', '123456789012']) {
+        const res = await adminA().post('/api/delivery/couriers', { name: 'X', phone });
+        expect(res.status).toBe(422);
+        expect(res.body.message).toBe('phone: Ingresa un celular de 10 dígitos que empiece por 3 o un fijo de 10 dígitos que empiece por 60 (por ejemplo 3101234567 o 6011234567)');
+      }
       expect((await adminA().post('/api/delivery/couriers', { name: '   ' })).status).toBe(422);
       expect((await adminA().post('/api/delivery/couriers', { name: 'X', extra: 1 })).status).toBe(422);
       for (const caller of [waiterA(), cashierA(), kitchenA()]) {
         expect((await caller.post('/api/delivery/couriers', { name: 'Op' })).status).toBe(403);
       }
       expect(await count('couriers')).toBe(before);
+    });
+
+    it('accepts a Colombian landline, normalised without +57 (H-038)', async () => {
+      const res = await adminA().post('/api/delivery/couriers', { name: 'Fijo', phone: '+57 601 222 3344' });
+      expect(res.status).toBe(201);
+      expect(res.body).toMatchObject({ name: 'Fijo', phone: '6012223344' });
+    });
+
+    it('refuses the phone of another active courier with 409 on create and on patch, writing nothing (H-038)', async () => {
+      const before = await count('couriers');
+      const dup = await adminA().post('/api/delivery/couriers', { name: 'Copia', phone: '300 111 2233' });
+      expect(dup.status).toBe(409);
+      expect(dup.body.message).toBe('Pedro ya usa este teléfono. Usa otro número.');
+      expect(await count('couriers')).toBe(before);
+      const other = await adminA().post('/api/delivery/couriers', { name: 'Otra', phone: '3009990001' });
+      const patch = await adminA().patch(`/api/delivery/couriers/${other.body.id}`, { phone: '3001112233' });
+      expect(patch.status).toBe(409);
+      const [row] = await db<{ phone: string }>('SELECT phone FROM couriers WHERE id = $1', [other.body.id]);
+      expect(row.phone).toBe('3009990001');
+      // The courier's own phone and an inactive courier's phone are not duplicates.
+      expect((await adminA().patch(`/api/delivery/couriers/${d.pedro}`, { phone: '3001112233' })).status).toBe(200);
+      await adminA().patch(`/api/delivery/couriers/${other.body.id}`, { isActive: false });
+      expect((await adminA().post('/api/delivery/couriers', { name: 'Nueva', phone: '3009990001' })).status).toBe(201);
+    });
+
+    it('refuses reactivating a courier whose phone an active courier now uses (H-038)', async () => {
+      const x = await adminA().post('/api/delivery/couriers', { name: 'Equis', phone: '3001112244' });
+      expect((await adminA().patch(`/api/delivery/couriers/${x.body.id}`, { isActive: false })).status).toBe(200);
+      expect((await adminA().post('/api/delivery/couriers', { name: 'Ye', phone: '3001112244' })).status).toBe(201);
+      const res = await adminA().patch(`/api/delivery/couriers/${x.body.id}`, { isActive: true });
+      expect(res.status).toBe(409);
+      expect(res.body.message).toBe('Ye ya usa este teléfono. Usa otro número.');
+      const [row] = await db<{ is_active: boolean }>('SELECT is_active FROM couriers WHERE id = $1', [x.body.id]);
+      expect(row.is_active).toBe(false);
+    });
+
+    it('refuses an active courier name already used by another active courier, ignoring case, accents and spaces (H-022)', async () => {
+      const before = await count('couriers');
+      for (const name of ['  pedro ', 'PÉDRO']) {
+        const res = await adminA().post('/api/delivery/couriers', { name });
+        expect(res.status).toBe(409);
+        expect(res.body.message).toBe('Ya hay un repartidor activo llamado "Pedro"');
+      }
+      expect(await count('couriers')).toBe(before);
+      const other = await adminA().post('/api/delivery/couriers', { name: 'Pedrito' });
+      expect((await adminA().patch(`/api/delivery/couriers/${other.body.id}`, { name: 'pedro' })).status).toBe(409);
+      expect((await adminA().patch(`/api/delivery/couriers/${d.pedro}`, { name: 'Pedro' })).status).toBe(200);
+      // An inactive namesake is not a duplicate, but reactivating it is.
+      await adminA().patch(`/api/delivery/couriers/${other.body.id}`, { isActive: false });
+      expect((await adminA().patch(`/api/delivery/couriers/${other.body.id}`, { name: 'Pedro' })).status).toBe(200);
+      expect((await adminA().patch(`/api/delivery/couriers/${other.body.id}`, { isActive: true })).status).toBe(409);
+      // Another restaurant may reuse the name.
+      expect((await adminB().post('/api/delivery/couriers', { name: 'Pedro' })).status).toBe(201);
     });
 
     it('admin patches name, phone and isActive; an empty phone clears it; unknown or other-tenant id is 404', async () => {
@@ -373,8 +432,6 @@ describe('delivery endpoints (Testcontainers, vipe_api)', () => {
         'create_delivery_order: p_customer must carry either id or phone, not both'],
       ['customer with neither id nor phone', { customer: { name: 'Nadie' } }, 422, '22023',
         'create_delivery_order: p_customer must carry id or phone'],
-      ['bad customer phone', { customer: { phone: '12' } }, 422, '22023',
-        'create_delivery_order: p_customer.phone must match 7..15 digits'],
       ['new customer without name', { customer: { phone: '3990000000' } }, 422, '22023',
         'create_delivery_order: p_customer.name is required when creating a new customer (1..120 chars)'],
       ['unknown customer id', { customer: { id: d.anaInB } }, 404, 'P0002', 'Not found'],
@@ -408,6 +465,20 @@ describe('delivery endpoints (Testcontainers, vipe_api)', () => {
       expect(res.status).toBe(status);
       expect(res.body).toMatchObject({ statusCode: status, message, code });
       expect(await snapshot()).toEqual(before);
+    });
+
+    it('refuses a new customer phone that is not Colombian with 422 and writes nothing (H-074)', async () => {
+      const before = await snapshot();
+      for (const phone of ['12', '1234567', '2101234567']) {
+        const res = await create({ customer: { phone, name: 'Nueva' }, address: { addressLine: 'Calle 1' } });
+        expect(res.status).toBe(422);
+        expect(res.body.message).toBe('customer.phone: Ingresa un celular de 10 dígitos que empiece por 3 o un fijo de 10 dígitos que empiece por 60 (por ejemplo 3101234567 o 6011234567)');
+      }
+      expect(await snapshot()).toEqual(before);
+      const landline = await create({ customer: { phone: '+57 604 555 1234', name: 'Fija' }, address: { addressLine: 'Calle 1' } });
+      expect(landline.status).toBe(201);
+      const [row] = await db<{ phone: string }>(`SELECT phone FROM customers WHERE name = 'Fija'`);
+      expect(row.phone).toBe('6045551234');
     });
 
     it('refuses a fee above 200.000 with 422 and writes nothing (H-075)', async () => {

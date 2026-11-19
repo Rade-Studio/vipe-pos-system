@@ -111,12 +111,20 @@ export class TablesService {
     return (await this.select(sql`ORDER BY t.number, t.id`)).map(toTable);
   }
 
+  /** H-022: a number another table of the restaurant (RLS) uses answers 409 in Spanish, before the unique key does. */
+  private async assertFreeNumber(number: number, exceptId: string | null): Promise<void> {
+    const taken = await this.rows(sql`
+      SELECT 1 FROM public.tables WHERE number = ${number} AND id IS DISTINCT FROM ${exceptId}::uuid LIMIT 1`);
+    if (taken.length > 0) throw new ConflictException(TABLE_MESSAGES.duplicateNumber(number));
+  }
+
   /**
    * Without coordinates the table is auto-placed on its zone (the first
    * active zone by sort order and name when zoneId is omitted); zoneId: null
    * leaves it off the plan.
    */
   async create(input: z.infer<typeof createTableSchema>): Promise<Table> {
+    await this.assertFreeNumber(input.number, null);
     const zoneId = input.zoneId !== undefined ? input.zoneId : await this.firstZone();
     const placed = input.x !== undefined && input.x !== null;
     const slot = !placed && zoneId ? await this.freeSlot(zoneId) : undefined;
@@ -162,6 +170,7 @@ export class TablesService {
    */
   async update(id: string, input: z.infer<typeof updateTableSchema>, callerProfileId: string): Promise<Table> {
     const table = await this.lock(id);
+    if (input.number !== undefined) await this.assertFreeNumber(input.number, id);
     if (input.status !== undefined && input.status !== table.status) {
       const open = await this.hasOpenOrder(id);
       if (!open && ORDER_STATUSES.includes(input.status)) {

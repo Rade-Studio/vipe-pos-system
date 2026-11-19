@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils'
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react'
 import {
   getClosedTodaySummary,
+  listCouriers,
   returnCourier,
   setDeliveryStatus,
   DeliveryServiceError,
@@ -361,7 +362,14 @@ export function DeliveryBoard({ role, operatorName, withRoleNav = false }: Deliv
     if (!open) setDialog(null)
   }
 
-  const listProps = { isLoading, error, role, onAction, onRegisterPayment, pendingIds, lateMinutes, nowMs }
+  // H-078: the card names its courier; same cache slot as the couriers rail.
+  const { data: couriers } = useQuery({
+    queryKey: ['couriers', 'all'],
+    queryFn: () => listCouriers({ activeOnly: false }),
+    staleTime: 30_000,
+  })
+  const courierNames = useMemo(() => new Map((couriers ?? []).map((c) => [c.id, c.name])), [couriers])
+  const listProps = { isLoading, error, role, onAction, onRegisterPayment, pendingIds, lateMinutes, nowMs, courierNames }
   const closedLine = closedToday ? closedTodayLine(closedToday) : null
 
   return (
@@ -572,6 +580,8 @@ type ListProps = {
   pendingIds: ReadonlySet<string>
   lateMinutes: number
   nowMs: number
+  /** Courier id -> name, for the card's "Lo lleva" line (H-078). */
+  courierNames: ReadonlyMap<string, string>
 }
 
 type Grouped = ReturnType<typeof groupDeliveries<DeliveryOrderWithBill>>
@@ -776,6 +786,7 @@ function CardList({
   pendingIds,
   lateMinutes,
   nowMs,
+  courierNames,
   closedMode = false,
   stacked = false,
   showStatus = false,
@@ -818,6 +829,7 @@ function CardList({
           onAction={(action) => onAction(row.delivery.orderId, action)}
           onRegisterPayment={() => onRegisterPayment(row.delivery.orderId)}
           isPending={pendingIds.has(row.delivery.orderId)}
+          courierName={row.delivery.courierId ? (courierNames.get(row.delivery.courierId) ?? null) : null}
           showStatus={showStatus}
           lateMinutes={lateMinutes}
           nowMs={nowMs}

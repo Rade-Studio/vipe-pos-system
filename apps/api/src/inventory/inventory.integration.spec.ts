@@ -1100,6 +1100,36 @@ describe('inventory endpoints (Testcontainers, vipe_api)', () => {
       expect((await adminA().get('/api/inventory/production-templates')).body).toHaveLength(1);
     });
   });
+
+  describe('duplicate item names (H-022)', () => {
+    it('saves an item whose unchanged name already repeats another (older data)', async () => {
+      const a = await adminA().post('/api/inventory/items', { name: 'Hielo', unit: 'kg' });
+      const b = await adminA().post('/api/inventory/items', { name: 'Hielo picado', unit: 'kg' });
+      await db(`UPDATE ingredients SET name = 'hielo' WHERE id = $1`, [b.body.id]);
+      const res = await adminA().patch(`/api/inventory/items/${a.body.id}`, { name: 'Hielo', minStock: 2 });
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ name: 'Hielo', minStock: 2 });
+    });
+
+    it('refuses an item or preparation named like another item of the restaurant, writing nothing', async () => {
+      const first = await adminA().post('/api/inventory/items', { name: 'Azúcar morena', unit: 'kg' });
+      expect(first.status).toBe(201);
+      const before = (await db('SELECT id FROM ingredients')).length;
+      const res = await adminA().post('/api/inventory/items', { name: ' AZUCAR  MORENA ', unit: 'kg' });
+      expect(res.status).toBe(409);
+      expect(res.body).toMatchObject({ statusCode: 409, message: 'Ya existe un artículo llamado "Azúcar morena"' });
+      const prep = await adminA().post('/api/inventory/items/preparations', { name: 'azúcar morena', unit: 'kg', yieldQuantity: 1 });
+      expect(prep.status).toBe(409);
+      expect((await db('SELECT id FROM ingredients')).length).toBe(before);
+      const other = await adminA().post('/api/inventory/items', { name: 'Panela', unit: 'kg' });
+      const renamed = await adminA().patch(`/api/inventory/items/${other.body.id}`, { name: 'Azucar Morena' });
+      expect(renamed.status).toBe(409);
+      const [panela] = await db<{ name: string }>('SELECT name FROM ingredients WHERE id = $1', [other.body.id]);
+      expect(panela.name).toBe('Panela');
+      expect((await adminA().patch(`/api/inventory/items/${first.body.id}`, { name: 'Azúcar Morena' })).status).toBe(200);
+    });
+  });
+
 });
 
 async function seedInventory(url: string) {

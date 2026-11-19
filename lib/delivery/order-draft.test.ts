@@ -15,6 +15,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
+import { COLOMBIAN_PHONE_ERROR } from './phone'
 import {
   initialOrderDraft,
   orderDraftReducer,
@@ -161,7 +162,7 @@ describe('setAddressExisting / setAddressNew / setAddressSave', () => {
     expect(d1.addressChoice).toEqual({ kind: 'existing', addressId: 'addr-7' })
   })
 
-  it('setAddressNew keeps the typed fields and remembers save=false by default', () => {
+  it('setAddressNew keeps the typed fields and saves it by default (H-077)', () => {
     const d0 = initialOrderDraft({ suggestedFee: 0 })
     const d1 = orderDraftReducer(d0, {
       type: 'setAddressNew',
@@ -176,7 +177,7 @@ describe('setAddressExisting / setAddressNew / setAddressSave', () => {
       neighborhood: 'Centro',
       reference: 'junto al parque',
       label: 'Casa',
-      save: false,
+      save: true,
     })
   })
 
@@ -189,11 +190,11 @@ describe('setAddressExisting / setAddressNew / setAddressSave', () => {
       reference: null,
       label: null,
     })
-    expect(d.addressChoice).toMatchObject({ kind: 'new', save: false })
-    d = orderDraftReducer(d, { type: 'setAddressSave', value: true })
     expect(d.addressChoice).toMatchObject({ kind: 'new', save: true })
     d = orderDraftReducer(d, { type: 'setAddressSave', value: false })
     expect(d.addressChoice).toMatchObject({ kind: 'new', save: false })
+    d = orderDraftReducer(d, { type: 'setAddressSave', value: true })
+    expect(d.addressChoice).toMatchObject({ kind: 'new', save: true })
   })
 })
 
@@ -439,6 +440,35 @@ describe('validateDraft', () => {
     const d0 = initialOrderDraft({ suggestedFee: 0 })
     const d1 = orderDraftReducer(d0, { type: 'setPhoneInput', value: '123' })
     expect(validateDraft(d1).some((e) => e.field === 'phone')).toBe(true)
+  })
+
+  it('requires a Colombian mobile or landline for a new customer (H-074)', () => {
+    const d0 = initialOrderDraft({ suggestedFee: 0 })
+    for (const value of ['1234567', '2101234567', '123456789012']) {
+      const d1 = orderDraftReducer(d0, { type: 'setPhoneInput', value })
+      expect(validateDraft(d1).find((e) => e.field === 'phone')?.message).toBe(COLOMBIAN_PHONE_ERROR)
+    }
+    for (const value of ['3101234567', '+57 601 123 4567']) {
+      const d1 = orderDraftReducer(d0, { type: 'setPhoneInput', value })
+      expect(validateDraft(d1).find((e) => e.field === 'phone')).toBeUndefined()
+    }
+  })
+
+  it('sends a +57 landline normalised to its 10 digits', () => {
+    let d = initialOrderDraft({ suggestedFee: 0 })
+    d = orderDraftReducer(d, { type: 'setPhoneInput', value: '+57 601 123 4567' })
+    d = orderDraftReducer(d, { type: 'setCustomerName', value: 'Ana' })
+    expect(toCreateInput(d).customer).toEqual({ phone: '6011234567', name: 'Ana' })
+  })
+
+  it('accepts an existing customer whose stored phone predates the Colombian rule', () => {
+    let d = initialOrderDraft({ suggestedFee: 0 })
+    d = orderDraftReducer(d, { type: 'setPhoneInput', value: '1234567' })
+    d = orderDraftReducer(d, {
+      type: 'setLookup',
+      lookup: { kind: 'existing', customer: makeCustomer({ id: 'old', phone: '1234567' }), addresses: [], defaultAddressId: '' },
+    })
+    expect(validateDraft(d).find((e) => e.field === 'phone')).toBeUndefined()
   })
 
   it('does NOT flag customerName when the customer already exists (server only updates the registry on a different value)', () => {

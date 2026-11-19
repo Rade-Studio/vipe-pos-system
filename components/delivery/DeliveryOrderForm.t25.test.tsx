@@ -265,3 +265,85 @@ describe("DeliveryOrderForm — fee validation (H-075)", () => {
   })
 })
 
+
+describe("DeliveryOrderForm — customer fields (H-074, H-077)", () => {
+  const phone = () => screen.getByLabelText("Teléfono")
+  const name = () => screen.getByLabelText("Nombre del cliente")
+  const errorOf = (field: HTMLElement) => {
+    const id = field.getAttribute("aria-describedby")
+    return id ? document.getElementById(id)?.textContent ?? null : null
+  }
+
+  it("shows no error before the operator touches the phone or the name", async () => {
+    renderForm()
+    await screen.findByLabelText("Teléfono")
+    expect(errorOf(phone())).toBeNull()
+    expect(errorOf(name())).toBeNull()
+    expect(phone()).toHaveAttribute("aria-invalid", "false")
+    expect(name()).toHaveAttribute("aria-invalid", "false")
+    await act(async () => {
+      fireEvent.blur(name())
+    })
+    expect(errorOf(name())).toBe("El nombre del cliente es obligatorio")
+    expect(name()).toHaveAttribute("aria-invalid", "true")
+  })
+
+  it("refuses a new customer's phone that is not Colombian after leaving the field", async () => {
+    env.findCustomerByPhone.mockResolvedValueOnce(null)
+    renderForm()
+    fireEvent.change(phone(), { target: { value: "1234567" } })
+    await act(async () => {
+      fireEvent.blur(phone())
+    })
+    expect(errorOf(phone())).toBe(
+      "Ingresa un celular de 10 dígitos que empiece por 3 o un fijo de 10 dígitos que empiece por 60 (por ejemplo 3101234567 o 6011234567)",
+    )
+    expect(phone()).toHaveAttribute("aria-invalid", "true")
+    await click(formStep("Confirmar"))
+    expect(screen.getByRole("button", { name: "Crear domicilio" })).toBeDisabled()
+    expect(env.createDeliveryOrder).not.toHaveBeenCalled()
+  })
+
+  it("still finds an existing customer whose stored phone predates the Colombian rule", async () => {
+    renderForm()
+    fireEvent.change(phone(), { target: { value: "1234567" } })
+    await act(async () => {
+      fireEvent.blur(phone())
+    })
+    await screen.findByText(/Cliente encontrado/)
+    expect(env.findCustomerByPhone).toHaveBeenCalledWith("1234567")
+    expect(errorOf(phone())).toBeNull()
+  })
+
+  it("shows the address error only after leaving the address field (H-077)", async () => {
+    env.findCustomerByPhone.mockResolvedValueOnce(null)
+    renderForm()
+    fireEvent.change(phone(), { target: { value: "3109998877" } })
+    await act(async () => {
+      fireEvent.blur(phone())
+    })
+    await click(formStep("Dirección"))
+    const address = await screen.findByLabelText(/^Dirección/)
+    expect(address).toHaveAttribute("aria-invalid", "false")
+    expect(errorOf(address)).toBeNull()
+    await act(async () => {
+      fireEvent.blur(address)
+    })
+    expect(errorOf(address)).toBe("Selecciona o ingresa una dirección")
+    expect(address).toHaveAttribute("aria-invalid", "true")
+  })
+
+  it("ticks Guardar dirección by default for a new address", async () => {
+    env.findCustomerByPhone.mockResolvedValueOnce(null)
+    renderForm()
+    fireEvent.change(phone(), { target: { value: "3109998877" } })
+    await act(async () => {
+      fireEvent.blur(phone())
+    })
+    fireEvent.change(name(), { target: { value: "Luis" } })
+    await click(formStep("Dirección"))
+    const address = await screen.findByLabelText(/^Dirección/)
+    fireEvent.change(address, { target: { value: "Calle 1 # 2-3" } })
+    expect(screen.getByRole("checkbox", { name: "Guardar dirección para el cliente" })).toBeChecked()
+  })
+})

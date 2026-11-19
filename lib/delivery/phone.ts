@@ -61,6 +61,35 @@ export function normalizePhone(input: string): string | null {
 }
 
 // -----------------------------------------------------------
+// normalizeColombianPhone (H-074, H-038)
+// -----------------------------------------------------------
+
+/** Spanish message for a phone that fails `normalizeColombianPhone`. */
+export const COLOMBIAN_PHONE_ERROR =
+  'Ingresa un celular de 10 dígitos que empiece por 3 o un fijo de 10 dígitos que empiece por 60 (por ejemplo 3101234567 o 6011234567)'
+
+const COLOMBIAN_PHONE_RE = /^(3\d{9}|60\d{8})$/
+
+/**
+ * The rule for a phone typed NOW (a new customer, a courier's new phone):
+ * a Colombian mobile (3 + 9 digits) or landline (60 + 8 digits), with an
+ * optional `+57` / `57` prefix and any formatting. Returns the 10 digits or
+ * null. Stored phones keep the looser `normalizePhone` rule (and the
+ * database CHECK `^[0-9]{7,15}$`), so lookups still find older rows.
+ *
+ * @example normalizeColombianPhone('+57 601 123 4567') -> '6011234567'
+ * @example normalizeColombianPhone('1234567')          -> null
+ */
+export function normalizeColombianPhone(input: string): string | null {
+  if (typeof input !== 'string') return null
+  let digits = input.replace(/\D/g, '')
+  if (digits.length === COUNTRY_CODE.length + 10 && digits.startsWith(COUNTRY_CODE)) {
+    digits = digits.slice(COUNTRY_CODE.length)
+  }
+  return COLOMBIAN_PHONE_RE.test(digits) ? digits : null
+}
+
+// -----------------------------------------------------------
 // formatPhone
 // -----------------------------------------------------------
 

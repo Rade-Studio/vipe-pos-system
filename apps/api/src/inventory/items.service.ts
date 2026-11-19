@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { sql, type SQL } from '@vipe/db';
 import type { z } from 'zod';
+import { assertUniqueName } from '../common/duplicate-name';
 import { UnitOfWork } from '../db/unit-of-work';
 import type {
   createCategorySchema,
@@ -82,6 +83,7 @@ export class ItemsService {
    */
   async createItem(input: z.infer<typeof createItemSchema>): Promise<InventoryItem> {
     const { openingStock, ...fields } = input;
+    await assertUniqueName(this.uow, 'ingredients', fields.name);
     const [row] = await rows<{ id: string }>(this.uow, sql`
       INSERT INTO public.ingredients ${insertColumns(itemColumns(fields))} RETURNING id`);
     if (openingStock) {
@@ -98,6 +100,7 @@ export class ItemsService {
   }
 
   async updateItem(id: string, input: ItemInput): Promise<InventoryItem> {
+    await assertUniqueName(this.uow, 'ingredients', input.name, id);
     const columns = itemColumns(input);
     if (columns.length) {
       await one(this.uow, sql`UPDATE public.ingredients SET ${setList(columns)} WHERE id = ${id} RETURNING id`, 'id', ITEM_NOT_FOUND);
@@ -107,6 +110,7 @@ export class ItemsService {
 
   /** A `kind = 'prep'` item ready for save_formula; `yieldQuantity` is not an item column. */
   async createPreparation(input: z.infer<typeof createPreparationSchema>): Promise<InventoryItem> {
+    await assertUniqueName(this.uow, 'ingredients', input.name);
     const [row] = await rows<{ id: string }>(this.uow, sql`
       INSERT INTO public.ingredients (name, unit, kind, category_id)
       VALUES (${input.name}, ${input.unit}, 'prep', ${input.categoryId ?? null})
