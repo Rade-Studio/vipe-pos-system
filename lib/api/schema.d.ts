@@ -14731,7 +14731,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description An active courier already uses the phone (H-038). */
+            /** @description An active courier already uses the phone (H-038) or the name, folded for case, accents and spaces (H-022). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -14784,7 +14784,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Another active courier already uses the phone (H-038). */
+            /** @description The courier would end up active (patched or reactivated) with the phone (H-038) or the name (H-022) of another active courier. */
             409: {
                 headers: {
                     [name: string]: unknown;

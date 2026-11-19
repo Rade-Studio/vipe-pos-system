@@ -510,6 +510,29 @@ describe('catalog endpoints (Testcontainers, vipe_api)', () => {
   });
 
   describe('duplicate names (H-022)', () => {
+    it('saves a row whose unchanged name already repeats another (older data), as the forms resend it', async () => {
+      const [lim1, lim2] = ['db000000-0000-0000-0000-00000000aa01', 'db000000-0000-0000-0000-00000000aa02'];
+      const [cat1, cat2] = ['cb000000-0000-0000-0000-00000000aa01', 'cb000000-0000-0000-0000-00000000aa02'];
+      await db(
+        `INSERT INTO categories (id, name, icon, active, restaurant_id) VALUES ($1, 'Jugos', 'x', true, $3), ($2, 'jugos', 'x', true, $3)`,
+        [cat1, cat2, fixtures.restaurantA],
+      );
+      await db(
+        `INSERT INTO dishes (id, name, price, category_id, active, restaurant_id) VALUES ($1, 'Limonada', 4000, $3, true, $4), ($2, 'limonada', 4000, $3, true, $4)`,
+        [lim1, lim2, c.drinks, fixtures.restaurantA],
+      );
+      const dish = await adminA().patch(`/api/catalog/dishes/${lim1}`, { name: 'Limonada', price: 4500, categoryId: c.drinks, active: true });
+      expect(dish.status).toBe(200);
+      expect(dish.body).toMatchObject({ name: 'Limonada', price: 4500 });
+      expect((await adminA().patch(`/api/catalog/dishes/${lim1}`, { name: ' LIMONADA ' })).status).toBe(200);
+      const category = await adminA().patch(`/api/catalog/categories/${cat1}`, { name: 'Jugos', description: 'Naturales' });
+      expect(category.status).toBe(200);
+      // A real rename onto the other name is still refused.
+      expect((await adminA().patch(`/api/catalog/dishes/${lim1}`, { name: 'Arepa' })).status).toBe(409);
+      await db('DELETE FROM dishes WHERE id = ANY($1)', [[lim1, lim2]]);
+      await db('DELETE FROM categories WHERE id = ANY($1)', [[cat1, cat2]]);
+    });
+
     const counts = async () => ({
       categories: (await db('SELECT id FROM categories')).length,
       dishes: (await db('SELECT id FROM dishes')).length,

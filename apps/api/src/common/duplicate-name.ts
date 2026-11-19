@@ -22,15 +22,17 @@ export type NamedTable = keyof typeof NAMED_TABLES;
 /**
  * 409 with a Spanish message when another row of `table` (RLS: the caller's
  * restaurant, active or not) has the same `nameKey`; `exceptId` is the row
- * being renamed. A check, not a constraint: two concurrent requests may both pass.
+ * being renamed (its unchanged name is never refused). A check, not a constraint: two concurrent requests may both pass.
  */
 export async function assertUniqueName(uow: UnitOfWork, table: NamedTable, name: string | undefined, exceptId: string | null = null): Promise<void> {
   if (name === undefined) return;
   const spec = NAMED_TABLES[table];
   const key = nameKey(name);
-  const { rows } = await uow.db.execute(sql`
-    SELECT id, name FROM ${spec.from} WHERE id IS DISTINCT FROM ${exceptId}::uuid ORDER BY name, id`);
+  const { rows } = await uow.db.execute(sql`SELECT id, name FROM ${spec.from} ORDER BY name, id`);
   const named = rows as { id: string; name: string }[];
-  const same = named.find((row) => nameKey(row.name) === key);
+  // An unchanged name (same key) saves even when older rows already repeat it: the forms resend it.
+  const current = exceptId === null ? undefined : named.find((row) => row.id === exceptId);
+  if (current && nameKey(current.name) === key) return;
+  const same = named.find((row) => row.id !== exceptId && nameKey(row.name) === key);
   if (same) throw new ConflictException(spec.message(same.name));
 }

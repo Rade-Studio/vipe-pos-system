@@ -260,6 +260,36 @@ describe('delivery endpoints (Testcontainers, vipe_api)', () => {
       expect((await adminA().post('/api/delivery/couriers', { name: 'Nueva', phone: '3009990001' })).status).toBe(201);
     });
 
+    it('refuses reactivating a courier whose phone an active courier now uses (H-038)', async () => {
+      const x = await adminA().post('/api/delivery/couriers', { name: 'Equis', phone: '3001112244' });
+      expect((await adminA().patch(`/api/delivery/couriers/${x.body.id}`, { isActive: false })).status).toBe(200);
+      expect((await adminA().post('/api/delivery/couriers', { name: 'Ye', phone: '3001112244' })).status).toBe(201);
+      const res = await adminA().patch(`/api/delivery/couriers/${x.body.id}`, { isActive: true });
+      expect(res.status).toBe(409);
+      expect(res.body.message).toBe('Ye ya usa este teléfono. Usa otro número.');
+      const [row] = await db<{ is_active: boolean }>('SELECT is_active FROM couriers WHERE id = $1', [x.body.id]);
+      expect(row.is_active).toBe(false);
+    });
+
+    it('refuses an active courier name already used by another active courier, ignoring case, accents and spaces (H-022)', async () => {
+      const before = await count('couriers');
+      for (const name of ['  pedro ', 'PÉDRO']) {
+        const res = await adminA().post('/api/delivery/couriers', { name });
+        expect(res.status).toBe(409);
+        expect(res.body.message).toBe('Ya hay un repartidor activo llamado "Pedro"');
+      }
+      expect(await count('couriers')).toBe(before);
+      const other = await adminA().post('/api/delivery/couriers', { name: 'Pedrito' });
+      expect((await adminA().patch(`/api/delivery/couriers/${other.body.id}`, { name: 'pedro' })).status).toBe(409);
+      expect((await adminA().patch(`/api/delivery/couriers/${d.pedro}`, { name: 'Pedro' })).status).toBe(200);
+      // An inactive namesake is not a duplicate, but reactivating it is.
+      await adminA().patch(`/api/delivery/couriers/${other.body.id}`, { isActive: false });
+      expect((await adminA().patch(`/api/delivery/couriers/${other.body.id}`, { name: 'Pedro' })).status).toBe(200);
+      expect((await adminA().patch(`/api/delivery/couriers/${other.body.id}`, { isActive: true })).status).toBe(409);
+      // Another restaurant may reuse the name.
+      expect((await adminB().post('/api/delivery/couriers', { name: 'Pedro' })).status).toBe(201);
+    });
+
     it('admin patches name, phone and isActive; an empty phone clears it; unknown or other-tenant id is 404', async () => {
       const created = await adminA().post('/api/delivery/couriers', { name: 'Temporal', phone: '3001110000' });
       const res = await adminA().patch(`/api/delivery/couriers/${created.body.id}`, { name: ' Fijo ', phone: '', isActive: false });

@@ -80,7 +80,7 @@ export class DeliveryController {
   @ApiBody({ type: CreateCourierRequest })
   @ApiCreatedResponse({ type: Courier })
   @ApiForbiddenResponse({ description: 'Not admin or delivery_operator.' })
-  @ApiConflictResponse({ description: 'An active courier already uses the phone (H-038).' })
+  @ApiConflictResponse({ description: 'An active courier already uses the phone (H-038) or the name, folded for case, accents and spaces (H-022).' })
   createCourier(@Body() body: unknown): Promise<Courier> {
     return this.delivery.createCourier(parseInput(createCourierSchema, body));
   }
@@ -91,7 +91,7 @@ export class DeliveryController {
   @ApiOkResponse({ type: Courier })
   @ApiNotFoundResponse()
   @ApiForbiddenResponse({ description: 'Not admin or delivery_operator, or a delivery_operator sending name or phone.' })
-  @ApiConflictResponse({ description: 'Another active courier already uses the phone (H-038).' })
+  @ApiConflictResponse({ description: 'The courier would end up active (patched or reactivated) with the phone (H-038) or the name (H-022) of another active courier.' })
   updateCourier(@Param('id') id: string, @Body() body: unknown, @Req() req: AuthenticatedRequest): Promise<Courier> {
     return this.delivery.updateCourier(parseInput(idParamSchema, id), parseInput(updateCourierSchema, body), req.profile!);
   }

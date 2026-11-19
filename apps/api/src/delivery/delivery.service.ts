@@ -5,6 +5,7 @@ import type { z } from 'zod';
 import type { CallerProfile } from '../auth/auth-context';
 import { resolveLineModifiers, modifierError } from '../catalog/line-modifiers';
 import { Clock } from '../common/clock';
+import { nameKey } from '../common/duplicate-name';
 import { VoidsService } from '../audit/voids.service';
 import { UnitOfWork } from '../db/unit-of-work';
 import { definedColumns, insertColumns, one, rows, rpc, setList } from '../inventory/inventory-sql';
@@ -174,18 +175,25 @@ export class DeliveryService {
     return result.map((r) => toCourier(r.row));
   }
 
-  /** H-038: an active courier other than `exceptId` already using `phone` answers 409 (no unique index: older rows may repeat). */
-  private async refuseActivePhoneDuplicate(phone: string | null | undefined, exceptId: string | null): Promise<void> {
-    if (!phone) return;
-    const found = await rows<{ name: string }>(this.uow, sql`
-      SELECT co.name FROM public.couriers co
-       WHERE co.is_active AND co.phone = ${phone} AND co.id IS DISTINCT FROM ${exceptId}::uuid
-       ORDER BY co.name LIMIT 1`);
-    if (found.length > 0) throw new ConflictException(`${found[0].name} ya usa este teléfono. Usa otro número.`);
+  /**
+   * H-038 / H-022: an active courier other than `exceptId` with the same phone,
+   * or with the same name folded like nameKey (case, accents, spaces), answers
+   * 409. Checked for a courier that ends up active; no unique index, so older
+   * rows may repeat and two concurrent requests may both pass.
+   */
+  private async refuseActiveDuplicates(name: string | null, phone: string | null, exceptId: string | null): Promise<void> {
+    const others = await rows<{ name: string; phone: string | null }>(this.uow, sql`
+      SELECT co.name, co.phone FROM public.couriers co
+       WHERE co.is_active AND co.id IS DISTINCT FROM ${exceptId}::uuid ORDER BY co.name, co.id`);
+    const samePhone = phone ? others.find((other) => other.phone === phone) : undefined;
+    if (samePhone) throw new ConflictException(`${samePhone.name} ya usa este teléfono. Usa otro número.`);
+    const key = name === null ? null : nameKey(name);
+    const sameName = key === null ? undefined : others.find((other) => nameKey(other.name) === key);
+    if (sameName) throw new ConflictException(`Ya hay un repartidor activo llamado "${sameName.name}"`);
   }
 
   async createCourier(input: z.infer<typeof createCourierSchema>): Promise<Courier> {
-    await this.refuseActivePhoneDuplicate(input.phone, null);
+    await this.refuseActiveDuplicates(input.name, input.phone ?? null, null);
     const pairs = definedColumns({ name: input.name, phone: input.phone ?? null });
     return toCourier(await one(this.uow, sql`
       INSERT INTO public.couriers ${insertColumns(pairs)} RETURNING to_jsonb(couriers) AS row`, 'row', 'Courier not found'));
@@ -199,7 +207,22 @@ export class DeliveryService {
     if (caller.role === 'delivery_operator' && ADMIN_ONLY_COURIER_FIELDS.some((field) => patch[field] !== undefined)) {
       throw new ForbiddenException('A delivery operator may only change isActive');
     }
-    await this.refuseActivePhoneDuplicate(patch.phone, id);
+    // The courier as it would be after the patch; only an active result is checked.
+    const [current] = await rows<{ name: string; phone: string | null; is_active: boolean }>(this.uow, sql`
+      SELECT co.name, co.phone, co.is_active FROM public.couriers co WHERE co.id = ${id}`);
+    if (current) {
+      const active = patch.isActive ?? current.is_active;
+      const phoneChanged = patch.phone !== undefined && patch.phone !== current.phone;
+      const nameChanged = patch.name !== undefined && nameKey(patch.name) !== nameKey(current.name);
+      const reactivated = active && !current.is_active;
+      if (active && (reactivated || phoneChanged || nameChanged)) {
+        await this.refuseActiveDuplicates(
+          reactivated || nameChanged ? (patch.name ?? current.name) : null,
+          reactivated || phoneChanged ? (patch.phone !== undefined ? patch.phone : current.phone) : null,
+          id,
+        );
+      }
+    }
     const pairs = definedColumns({ name: patch.name, phone: patch.phone, is_active: patch.isActive });
     return toCourier(await one(this.uow, sql`
       UPDATE public.couriers SET ${setList(pairs)} WHERE id = ${id} RETURNING to_jsonb(couriers) AS row`, 'row', 'Courier not found'));

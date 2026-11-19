@@ -7753,7 +7753,7 @@
             "description": "Not admin or delivery_operator."
           },
           "409": {
-            "description": "An active courier already uses the phone (H-038)."
+            "description": "An active courier already uses the phone (H-038) or the name, folded for case, accents and spaces (H-022)."
           },
           "422": {
             "description": "Invalid input or an RPC rejection (P0001, 22023) with its message verbatim and `code`."
@@ -7811,7 +7811,7 @@
             "description": ""
           },
           "409": {
-            "description": "Another active courier already uses the phone (H-038)."
+            "description": "The courier would end up active (patched or reactivated) with the phone (H-038) or the name (H-022) of another active courier."
           },
           "422": {
             "description": "Invalid input or an RPC rejection (P0001, 22023) with its message verbatim and `code`."

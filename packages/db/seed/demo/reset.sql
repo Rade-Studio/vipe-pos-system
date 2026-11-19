@@ -41,7 +41,12 @@ DECLARE
     'production_templates', 'inventory_transit_lots', 'inventory_transfer_lines', 'inventory_transfers',
     'inventory_movements', 'inventory_lots', 'purchase_order_lines', 'purchase_orders',
     'ingredient_transactions', 'ingredients', 'ingredient_categories', 'suppliers', 'inventory_locations',
-    'dishes', 'subcategories', 'categories', 'stations', 'tables', 'zones', 'payment_methods', 'business_config'];
+    'dishes', 'subcategories', 'categories', 'stations', 'tables', 'zones', 'business_config'];
+  -- Covered by the guard but not deleted by restaurant_id: they go with the
+  -- restaurant (ON DELETE CASCADE). payment_methods: the trigger of migration
+  -- 0041 refuses deleting the last active cash method while its restaurant
+  -- exists, and lets the cascade through.
+  c_cascaded constant text[] := ARRAY['payment_methods'];
   v_missing text;
   v_table text;
 BEGIN
@@ -51,7 +56,7 @@ BEGIN
     FROM pg_catalog.pg_class c
     JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid AND a.attname = 'restaurant_id' AND NOT a.attisdropped
    WHERE c.relnamespace = 'public'::regnamespace AND c.relkind IN ('r', 'p')
-     AND c.relname <> ALL (c_tables || ARRAY['profiles', 'ingredient_transactions_orders']);
+     AND c.relname <> ALL (c_tables || c_cascaded || ARRAY['profiles', 'ingredient_transactions_orders']);
   IF v_missing IS NOT NULL THEN
     RAISE EXCEPTION 'reset.sql does not cover the tenant table(s) %; nothing was deleted', v_missing
       USING HINT = 'add them to c_tables in packages/db/seed/demo/reset.sql, children before parents';

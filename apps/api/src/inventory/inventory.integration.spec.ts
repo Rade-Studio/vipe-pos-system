@@ -1102,6 +1102,15 @@ describe('inventory endpoints (Testcontainers, vipe_api)', () => {
   });
 
   describe('duplicate item names (H-022)', () => {
+    it('saves an item whose unchanged name already repeats another (older data)', async () => {
+      const a = await adminA().post('/api/inventory/items', { name: 'Hielo', unit: 'kg' });
+      const b = await adminA().post('/api/inventory/items', { name: 'Hielo picado', unit: 'kg' });
+      await db(`UPDATE ingredients SET name = 'hielo' WHERE id = $1`, [b.body.id]);
+      const res = await adminA().patch(`/api/inventory/items/${a.body.id}`, { name: 'Hielo', minStock: 2 });
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ name: 'Hielo', minStock: 2 });
+    });
+
     it('refuses an item or preparation named like another item of the restaurant, writing nothing', async () => {
       const first = await adminA().post('/api/inventory/items', { name: 'Azúcar morena', unit: 'kg' });
       expect(first.status).toBe(201);

@@ -3,7 +3,7 @@
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
 SET LOCAL search_path = public, extensions;
-SELECT plan(16);
+SELECT plan(19);
 
 SELECT has_trigger('public', 'payment_methods', 'payment_methods_keep_one_active', 'payment_methods has the keep-one-active trigger');
 
@@ -91,6 +91,27 @@ SELECT lives_ok(
   $$ DELETE FROM public.restaurants WHERE id = '46000000-0000-0000-0000-0000000000bb' $$,
   'deleting a restaurant still cascades to its payment methods'
 );
+
+-- The demo reset (packages/db/seed/demo/reset.sql) as vipe_migrator: tenant
+-- tables by restaurant_id, payment_methods left to the restaurant's ON DELETE
+-- CASCADE, which the trigger lets through.
+INSERT INTO public.restaurants (id, slug, name) VALUES
+  ('46000000-0000-0000-0000-0000000000dd', 'rest-t460-demo', 'Restaurant T460 demo');
+INSERT INTO public.business_config (key, value, restaurant_id)
+VALUES ('demo_seed', 'true', '46000000-0000-0000-0000-0000000000dd');
+SET LOCAL ROLE vipe_migrator;
+SELECT lives_ok(
+  $$ DO $q$ BEGIN
+       DELETE FROM public.business_config WHERE restaurant_id = '46000000-0000-0000-0000-0000000000dd';
+       DELETE FROM public.restaurants WHERE id = '46000000-0000-0000-0000-0000000000dd';
+     END; $q$ $$,
+  'the demo reset deletes a demo restaurant with its last cash method'
+);
+RESET ROLE;
+SELECT is((SELECT count(*) FROM public.restaurants WHERE id = '46000000-0000-0000-0000-0000000000dd'), 0::bigint,
+  'the demo restaurant is gone');
+SELECT is((SELECT count(*) FROM public.payment_methods WHERE restaurant_id = '46000000-0000-0000-0000-0000000000dd'), 0::bigint,
+  'its payment methods are gone');
 
 SELECT * FROM finish();
 ROLLBACK;

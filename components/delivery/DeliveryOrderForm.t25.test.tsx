@@ -315,6 +315,24 @@ describe("DeliveryOrderForm — customer fields (H-074, H-077)", () => {
     expect(errorOf(phone())).toBeNull()
   })
 
+  it("shows the address error only after leaving the address field (H-077)", async () => {
+    env.findCustomerByPhone.mockResolvedValueOnce(null)
+    renderForm()
+    fireEvent.change(phone(), { target: { value: "3109998877" } })
+    await act(async () => {
+      fireEvent.blur(phone())
+    })
+    await click(formStep("Dirección"))
+    const address = await screen.findByLabelText(/^Dirección/)
+    expect(address).toHaveAttribute("aria-invalid", "false")
+    expect(errorOf(address)).toBeNull()
+    await act(async () => {
+      fireEvent.blur(address)
+    })
+    expect(errorOf(address)).toBe("Selecciona o ingresa una dirección")
+    expect(address).toHaveAttribute("aria-invalid", "true")
+  })
+
   it("ticks Guardar dirección by default for a new address", async () => {
     env.findCustomerByPhone.mockResolvedValueOnce(null)
     renderForm()

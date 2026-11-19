@@ -237,11 +237,12 @@ export function DeliveryOrderForm({
     return map
   }, [issues])
   // H-077: the customer fields show their error only once the operator left them.
-  const [touched, setTouched] = useState<ReadonlySet<'phone' | 'customerName'>>(() => new Set())
-  const markTouched = (field: 'phone' | 'customerName') =>
+  const [touched, setTouched] = useState<ReadonlySet<'phone' | 'customerName' | 'address'>>(() => new Set())
+  const markTouched = (field: 'phone' | 'customerName' | 'address') =>
     setTouched((prev) => (prev.has(field) ? prev : new Set(prev).add(field)))
   const phoneIssue = touched.has('phone') ? (issuesByField.get('phone') ?? null) : null
   const nameIssue = touched.has('customerName') ? (issuesByField.get('customerName') ?? null) : null
+  const addressIssue = touched.has('address') ? issuesByField.get('address') : undefined
   const feeTextError = useMemo(() => {
     if (feeText === null) return null
     const parsed = parseDefaultFeeInput(feeText)
@@ -577,7 +578,8 @@ export function DeliveryOrderForm({
                 choice={draft.addressChoice}
                 onChange={(next) => dispatch({ type: 'setAddressNew', ...next })}
                 onSaveToggle={(v) => dispatch({ type: 'setAddressSave', value: v })}
-                error={issuesByField.get('address')}
+                onBlur={() => markTouched('address')}
+                error={addressIssue}
               />
             )}
           </section>
@@ -949,7 +951,11 @@ function AddressPicker({
           ))
         )}
       </div>
-      {error && <p className="text-xs text-destructive">{error}</p>}
+      {error && (
+        <p id="savedAddress-error" className="text-xs text-destructive">
+          {error}
+        </p>
+      )}
     </div>
   )
 }
@@ -958,9 +964,12 @@ function NewAddressFields({
   choice,
   onChange,
   onSaveToggle,
+  onBlur,
   error,
 }: {
   choice: OrderDraft['addressChoice']
+  /** H-077: the address error shows once the field was left. */
+  onBlur: () => void
   onChange: (next: { addressLine: string; neighborhood: string | null; reference: string | null; label: string | null }) => void
   onSaveToggle: (value: boolean) => void
   error: string | undefined
@@ -983,7 +992,9 @@ function NewAddressFields({
               label: choice.kind === 'new' ? choice.label : null,
             })
           }
+          onBlur={onBlur}
           aria-invalid={Boolean(error)}
+          aria-describedby={error ? 'addressLine-error' : undefined}
         />
       </div>
       <div className="grid grid-cols-2 gap-2">
@@ -1022,7 +1033,11 @@ function NewAddressFields({
           Guardar dirección para el cliente
         </Label>
       </div>
-      {error && <p className="text-xs text-destructive">{error}</p>}
+      {error && (
+        <p id="addressLine-error" className="text-xs text-destructive">
+          {error}
+        </p>
+      )}
     </div>
   )
 }
