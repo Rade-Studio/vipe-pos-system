@@ -21,7 +21,7 @@ import { listPaymentMethods } from "@/lib/api/payments"
 import { usePrintingEnabled } from "@/lib/api/printing"
 import type { PaymentMethodOption } from "@/lib/payments/types"
 import type { PaymentTransaction } from "@/types/cash-register"
-import { getRegisterPaidOrders } from "@/lib/api/registers"
+import { getAllRegisterPaidOrders } from "@/lib/api/registers"
 import { registerPaidOrdersQueryKey } from "./PaidOrdersList"
 
 interface TransactionsListProps {
@@ -65,8 +65,10 @@ export function TransactionsList({ registerLoading = false, onReprint }: Transac
 
   // H-069: the waiter is the order's (the payment only knows the cashier).
   const { data: paidOrders = [], isLoading: loadingWaiters } = useQuery({
-    queryKey: registerPaidOrdersQueryKey(registerId ?? ""),
-    queryFn: () => getRegisterPaidOrders(registerId!),
+    // Every page (H-069): the payments list has no cap, one page does. Under the
+    // "Pagadas" key, so the invalidation after a payment refreshes it too.
+    queryKey: [...registerPaidOrdersQueryKey(registerId ?? ""), "all"],
+    queryFn: () => getAllRegisterPaidOrders(registerId!),
     enabled: registerId !== null,
   })
   const waiterByPayment = useMemo(

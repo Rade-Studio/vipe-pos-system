@@ -25,6 +25,8 @@ export const registerSummaryQuerySchema = z.strictObject({ ids: guidListQuery(MA
 
 export const paidOrdersQuerySchema = z.strictObject({
   limit: z.coerce.number().int().min(1).max(PAID_ORDERS_MAX).optional(),
+  /** H-069: rows to skip, for paging a shift longer than one page. */
+  offset: z.coerce.number().int().min(0).optional(),
 });
 /**
  * No timestamps and no opener from the client: the server stamps the opening

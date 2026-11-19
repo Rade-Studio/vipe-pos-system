@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
  * after the register closes.
  */
 
-const env = vi.hoisted(() => ({ paymentIds: [] as string[][], paidOrders: vi.fn() }))
+const env = vi.hoisted(() => ({ paymentIds: [] as string[][], paidOrders: vi.fn(), firstPage: vi.fn(), payments: null as unknown[] | null }))
 const ORDER_1 = "abcdef12-0000-0000-0000-000000000000"
 const ORDER_2 = "12345678-0000-0000-0000-000000000000"
 const tender = (paymentMethodId: string, methodCode: string, amount: number, lineNo = 1) => ({
@@ -20,8 +20,9 @@ vi.mock("@/hooks/use-register-payments", () => ({
     env.paymentIds.push(ids)
     return {
       isLoading: false,
-      data: ids.length
-        ? [
+      data: !ids.length
+        ? []
+        : env.payments ?? [
             {
               id: "p-1", orderId: ORDER_1, cashRegisterId: "r-1", cashierProfileId: "cashier-1",
               amountDue: 60000, tipAmount: 0, totalCharged: 60000, changeGiven: 0, idempotencyKey: "k1", createdAt: "2026-11-07T15:00:00.000Z",
@@ -32,12 +33,12 @@ vi.mock("@/hooks/use-register-payments", () => ({
               amountDue: 10000, tipAmount: 0, totalCharged: 10000, changeGiven: 0, idempotencyKey: "k2", createdAt: "2026-11-07T14:00:00.000Z",
               tenders: [tender("m-1", "cash", 10000)],
             },
-          ]
-        : [],
+          ],
     }
   },
 }))
-vi.mock("@/lib/api/registers", () => ({ getRegisterPaidOrders: env.paidOrders }))
+// `getRegisterPaidOrders` is the server's first page (newest 100); `getAllRegisterPaidOrders` pages through all.
+vi.mock("@/lib/api/registers", () => ({ getRegisterPaidOrders: env.firstPage, getAllRegisterPaidOrders: env.paidOrders }))
 vi.mock("@/lib/api/payments", () => ({
   listPaymentMethods: async () => [
     { id: "m-1", code: "cash", name: "Efectivo", kind: "cash", isActive: true, sortOrder: 1 },
@@ -70,6 +71,8 @@ const search = (value: string) => fireEvent.change(screen.getByPlaceholderText("
 
 beforeEach(() => {
   env.paymentIds = []
+  env.payments = null
+  env.firstPage.mockReset().mockImplementation(async () => (await env.paidOrders()).slice(0, 100))
   env.paidOrders.mockReset().mockResolvedValue([paidRow(ORDER_1, "p-1", { id: "w-1", name: "Ana Gómez" }), paidRow(ORDER_2, "p-2", null)])
   // The cashier is a known profile; the waiter is not in the local profile list.
   useProfileStore.setState({ profiles: [{ id: "cashier-1", name: "Caja Uno", role: "cashier" }] as never })
@@ -116,5 +119,22 @@ describe("TransactionsList shift view (H-069)", () => {
     expect(env.paymentIds.at(-1)).toEqual([])
     expect(env.paidOrders).not.toHaveBeenCalled()
     expect(screen.getByText("No hay transacciones registradas")).toBeInTheDocument()
+  })
+
+  it("names the waiter of the oldest payment of a shift longer than one page (117 payments)", async () => {
+    const n = 117
+    env.payments = Array.from({ length: n }, (_, i) => ({
+      id: `p-${i}`, orderId: `${String(i).padStart(8, "0")}-0000-0000-0000-000000000000`, cashRegisterId: "r-1", cashierProfileId: "cashier-1",
+      amountDue: 1000, tipAmount: 0, totalCharged: 1000, changeGiven: 0, idempotencyKey: `k-${i}`,
+      createdAt: new Date(Date.UTC(2026, 10, 7, 15, 0) - i * 60_000).toISOString(), tenders: [tender("m-1", "cash", 1000)],
+    }))
+    env.paidOrders.mockResolvedValue(
+      Array.from({ length: n }, (_, i) => paidRow(`o-${i}`, `p-${i}`, { id: "w-x", name: i === n - 1 ? "Oldest Waiter" : "Otra Mesera" })),
+    )
+    await renderList()
+    await waitFor(() => expect(rows()[n - 1]).toHaveTextContent("Oldest Waiter"))
+    expect(screen.queryByText("Sin mesero")).toBeNull()
+    search("oldest")
+    expect(rows()).toHaveLength(1)
   })
 })

@@ -21,6 +21,7 @@ import { fetchSession, profileFromSession, type Session } from "@/lib/api/auth"
 import { viewForRole } from "@/lib/auth/roles"
 import { startupLoadsForRole, startupRole, type ShellLoad } from "@/lib/shell/startup-loads"
 import { onAuthEvent } from "@/lib/shell/auth-events"
+import { CART_STORAGE_KEY } from "@/store/useCartStore"
 import { log } from "@/lib/log"
 import type { ProfileRole } from "@/types"
 
@@ -106,6 +107,13 @@ export default function Home() {
   }
 
   const clearSession = () => {
+    // H-052: unsent table carts are saved on the device; a session that ends
+    // (expiry or a refused refresh) must not hand them to the next user.
+    try {
+      window.localStorage.removeItem(CART_STORAGE_KEY)
+    } catch {
+      // Storage unavailable: nothing was saved either.
+    }
     setTerminalSession(null)
     setAuthProfile(null)
     setSelectedProfile(null)

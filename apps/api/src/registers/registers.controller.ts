@@ -136,6 +136,11 @@ export class RegistersController {
   @Get(':id/paid-orders')
   @Roles(...DRAWER_ROLES)
   @ApiQuery({ name: 'limit', required: false, description: `1..${PAID_ORDERS_MAX}, default ${PAID_ORDERS_DEFAULT}.` })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    description: 'Rows to skip (default 0). Rows are ordered by payment time, newest first, then payment id, so pages never skip or repeat a row.',
+  })
   @ApiOkResponse({
     type: [RegisterPaidOrder],
     description: 'Paid orders of the register (one per pay_order payment), newest payment first; legacy payment_transactions are not listed.',
@@ -143,7 +148,8 @@ export class RegistersController {
   @ApiNotFoundResponse({ description: 'Unknown or of another restaurant.' })
   @ApiForbiddenResponse({ description: 'Not admin or cashier.' })
   paidOrders(@Param('id') id: string, @Query() query: unknown): Promise<RegisterPaidOrder[]> {
-    return this.registers.paidOrders(parseInput(idParamSchema, id), parseInput(paidOrdersQuerySchema, query).limit);
+    const { limit, offset } = parseInput(paidOrdersQuerySchema, query);
+    return this.registers.paidOrders(parseInput(idParamSchema, id), limit, offset);
   }
   @Get(':id/cash-transactions')
   @ApiOkResponse({ type: [CashTransaction], description: 'Newest first.' })

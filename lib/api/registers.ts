@@ -165,6 +165,28 @@ export function getRegisterPaidOrders(registerId: string, options: { limit?: num
   })
 }
 
+/** Page size of `getAllRegisterPaidOrders`: the server's maximum `limit`. */
+export const PAID_ORDERS_PAGE = 200
+
+/**
+ * H-069: every paid order of one register, newest first. Reads pages of
+ * `PAID_ORDERS_PAGE` by `offset` until a short page (the server orders by
+ * payment time then payment id, so pages never skip or repeat a row).
+ */
+export async function getAllRegisterPaidOrders(registerId: string): Promise<RegisterPaidOrder[]> {
+  const rows: RegisterPaidOrder[] = []
+  for (let offset = 0; ; offset += PAID_ORDERS_PAGE) {
+    const page = await call(async () => {
+      const { data } = await api.GET("/api/registers/{id}/paid-orders", {
+        params: { path: { id: registerId }, query: { limit: PAID_ORDERS_PAGE, offset } },
+      })
+      return required(data)
+    })
+    rows.push(...page.map((row) => ({ ...row, paidAt: new Date(row.paidAt) })))
+    if (page.length < PAID_ORDERS_PAGE) return rows
+  }
+}
+
 /** A register as the server returns it, with its validation (caja-cierres S7). */
 export type ValidatedRegister = CashRegisterDto
 

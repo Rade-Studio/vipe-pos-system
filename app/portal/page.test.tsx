@@ -108,6 +108,7 @@ import { useProfileStore } from "@/store/useProfileStore"
 import { useTableStore } from "@/store/useTableStore"
 import { useOrderStore } from "@/store/useOrderStore"
 import { emitAuthEvent } from "@/lib/shell/auth-events"
+import { CART_STORAGE_KEY } from "@/store/useCartStore"
 import Home from "./page"
 
 beforeEach(() => {
@@ -332,6 +333,19 @@ describe("shell session through the API", () => {
     expect(await screen.findByText("login-view")).toBeInTheDocument()
     expect(useProfileStore.getState().authProfile).toBeNull()
     expect(useProfileStore.getState().selectedProfile).toBeNull()
+  })
+
+  it("forgets the saved table carts when the session ends, so the next user starts empty (H-052)", async () => {
+    env.role = "admin"
+    await renderShell("admin-view")
+    window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify({ state: { cartItems: { t1: [] } }, version: 0 }))
+
+    act(() => {
+      emitAuthEvent("signed_out")
+    })
+
+    expect(await screen.findByText("login-view")).toBeInTheDocument()
+    expect(window.localStorage.getItem(CART_STORAGE_KEY)).toBeNull()
   })
 
   it("stops listening for signed_out after unmount", async () => {

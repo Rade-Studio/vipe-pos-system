@@ -225,7 +225,7 @@ export class RegistersService {
    * order (number, type, table, zone, waiter) and tenders. RLS scopes every
    * table to the caller's restaurant; an invisible register is 404.
    */
-  async paidOrders(registerId: string, limit = PAID_ORDERS_DEFAULT): Promise<RegisterPaidOrder[]> {
+  async paidOrders(registerId: string, limit = PAID_ORDERS_DEFAULT, offset = 0): Promise<RegisterPaidOrder[]> {
     const [register] = await this.rows(sql`SELECT 1 FROM public.cash_registers WHERE id = ${registerId}`);
     if (!register) {
       throw new NotFoundException('Register not found');
@@ -251,7 +251,7 @@ export class RegistersService {
         LEFT JOIN public.profiles w ON w.id = o.waiter_id
        WHERE p.cash_register_id = ${registerId}
        ORDER BY p.created_at DESC, p.id
-       LIMIT ${limit}`);
+       LIMIT ${limit} OFFSET ${offset}`);
     return rows.map(({ row }) => toPaidOrder(row));
   }
 

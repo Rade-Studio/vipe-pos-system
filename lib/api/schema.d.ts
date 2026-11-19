@@ -11661,6 +11661,8 @@ export interface operations {
     RegistersController_paidOrders: {
         parameters: {
             query?: {
+                /** @description Rows to skip (default 0). Rows are ordered by payment time, newest first, then payment id, so pages never skip or repeat a row. */
+                offset?: unknown;
                 /** @description 1..200, default 100. */
                 limit?: unknown;
             };
