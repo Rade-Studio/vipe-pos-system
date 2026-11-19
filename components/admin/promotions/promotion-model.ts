@@ -374,6 +374,7 @@ export const PROMOTION_ERROR_MESSAGES: Record<string, string> = {
   end_before_start: "La fecha final no puede ser antes de la inicial",
   unknown_target: "Un producto o grupo elegido ya no existe; quítalo y vuelve a guardar",
   discount_exceeds_price: "El descuento no puede ser igual o mayor al precio del plato",
+  discount_percentage_full: "Un descuento del 100 % deja el plato en $0; usa un porcentaje menor",
 }
 
 /** Field key → message; `form` holds what belongs to no field. */

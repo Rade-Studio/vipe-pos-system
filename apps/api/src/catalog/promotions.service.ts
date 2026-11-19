@@ -125,9 +125,10 @@ export class PromotionsService {
       targets: body.targets !== undefined || !keepsTargets,
       comboGroups: body.comboGroups !== undefined || shape.kind !== 'combo',
     });
-    // Only an edit of the discount or its targets is checked: pausing or
-    // renaming a promotion whose dish got cheaper later keeps working.
-    if (body.kind !== undefined || body.discountType !== undefined || body.discountValue !== undefined || body.targets !== undefined) {
+    // Only a real edit of the discount or its targets is checked (F1): pausing,
+    // renaming or re-sending the stored values of a promotion whose dish got
+    // cheaper later keeps working, as before H-021.
+    if (discountEdited(body, toShape(current))) {
       await this.assertDiscountBelowPrices(id, shape);
     }
     return this.one(id);
@@ -276,18 +277,28 @@ export class PromotionsService {
   }
 
   /**
-   * H-021: a fixed product discount must stay below the list price of every
-   * dish it targets, or the dish would be sold at $0. The cheapest offending
+   * H-021: an automatic fixed product discount must stay below the list price
+   * of every active dish it targets, and an automatic percentage below 100 %,
+   * or the dish would be sold at $0. The cheapest offending
    * dish is named in the 422 (`dishName`, `dishPrice`); the request
    * transaction rolls the write back. The engine still caps any discount at
    * the price, so promotions stored before this rule keep working.
    */
   private async assertDiscountBelowPrices(id: string, p: PromotionShape): Promise<void> {
-    if (p.kind !== 'product_discount' || p.discountType !== 'fixed_amount' || p.discountValue === null) return;
+    // A manual or PIN courtesy may bring a dish to $0 on purpose: someone applies
+    // it to one order (and authorizes it with a PIN); only automatic ones are checked.
+    if (p.kind !== 'product_discount' || p.mode !== 'automatic' || p.discountValue === null) return;
+    // A percentage of 100 leaves every targeted dish at $0 (above 100 is discount_percentage_range).
+    if (p.discountType === 'percentage') {
+      if (p.discountValue >= 100) throw rejected([{ path: ['discountValue'], message: 'discount_percentage_full' }]);
+      return;
+    }
+    if (p.discountType !== 'fixed_amount') return;
     const { rows } = await this.uow.db.execute(sql`
       SELECT d.name, d.price::float8 AS price
         FROM public.dishes d
        WHERE d.price <= ${p.discountValue}
+         AND d.active
          AND (d.id IN (SELECT dish_id FROM public.promotion_dishes WHERE promotion_id = ${id})
            OR d.category_id IN (SELECT category_id FROM public.promotion_categories WHERE promotion_id = ${id})
            OR d.subcategory_id IN (SELECT subcategory_id FROM public.promotion_subcategories WHERE promotion_id = ${id}))
@@ -360,6 +371,24 @@ function defaults(now: RestaurantNow): Omit<PromotionShape, 'name' | 'descriptio
 }
 
 /** The stored promotion as a write body, so a PATCH is validated merged. */
+const sortedIds = (ids: readonly string[]) => [...new Set(ids)].sort().join(',');
+
+/** True when the body changes the discount type, value or targets of the stored promotion. */
+function discountEdited(body: { discountType?: unknown; discountValue?: unknown; targets?: PromotionShape['targets'] }, stored: PromotionShape): boolean {
+  if (body.discountType !== undefined && body.discountType !== stored.discountType) return true;
+  if (body.discountValue !== undefined && body.discountValue !== stored.discountValue) return true;
+  if (body.targets !== undefined) {
+    const t = body.targets;
+    const s = stored.targets;
+    return (
+      sortedIds(t.dishIds) !== sortedIds(s.dishIds) ||
+      sortedIds(t.categoryIds) !== sortedIds(s.categoryIds) ||
+      sortedIds(t.subcategoryIds) !== sortedIds(s.subcategoryIds)
+    );
+  }
+  return false;
+}
+
 function toShape({ rule, description, startsAt, endsAt }: PromotionRecord): PromotionShape {
   return {
     name: rule.name,

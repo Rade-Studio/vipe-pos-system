@@ -123,6 +123,7 @@ export const toClosedTodaySummary = (row: Json): ClosedTodaySummary => ({
   cancelledCount: req(row, 'cancelled'),
   failedCount: req(row, 'failed'),
   averageDeliveryMinutes: numOrNull(row.average_minutes),
+  pendingFromEarlierDays: req(row, 'pending_earlier'),
 });
 
 /** `{delivery, subtotal, tax, status}` of GET /delivery/active; amountDue = subtotal + tax, as the web computed it. */

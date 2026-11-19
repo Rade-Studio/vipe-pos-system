@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useQuery } from "@tanstack/react-query"
 import type { Profile, Order, CartItem } from "@/types"
 import { Header } from "@/components/layout/Header"
@@ -108,7 +108,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
   const [splitGate] = useState(createSingleFlight)
   const [undoGate] = useState(createSingleFlight)
   const [partialParentItems, setPartialParentItems] = useState<CartItem[]>([])
-  const [partialPercentages, setPartialPercentages] = useState({ tax: 0, tip: 0 })
+  const [partialPercentages, setPartialPercentages] = useState({ tax: 0, tip: 0, hasDiscounts: false })
   const [shiftSheetOpen, setShiftSheetOpen] = useState(false)
   // "Precio cambió" (T24): reported by the payment panel, shown over the detail
   // pane (on phone at the top of the current step), as in the design.
@@ -218,7 +218,18 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
     setSelectedKey(entry.key)
     setStep("detail")
   }
+  // F3: the order of the payment attempt sent from the panel, kept until it is
+  // confirmed (onPaid), the cashier leaves it, or realtime reports it paid.
+  const payAttemptRef = useRef<Order | null>(null)
+  const paidByRealtimeRef = useRef<(order: Order) => void>(() => {})
+  const selectedPayOrderRef = useRef<Order | null>(null)
+  selectedPayOrderRef.current = selectedEntry?.payOrder ?? null
+  const handleSubmittingChange = useCallback((submitting: boolean) => {
+    if (submitting && selectedPayOrderRef.current) payAttemptRef.current = selectedPayOrderRef.current
+  }, [])
+
   const clearSelection = () => {
+    payAttemptRef.current = null
     setSelectedKey(null)
     setBillNotice(null)
     setPayTotals(null)
@@ -273,9 +284,17 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
       // `orderType: orderTypeFromRow(row)` — the same mapping the initial-load
       // converter uses — so a domicilio arriving over realtime keeps its
       // delivery flag instead of being labelled "Mesa ?".
+      const row = (payload as { eventType?: string; new?: { id?: string; status?: string } }).new
+      const attempt = payAttemptRef.current
+      const paidAttempt =
+        (payload as { eventType?: string }).eventType === "UPDATE" && row?.status === "paid" && attempt?.id === row.id
       queryClient.setQueryData<Order[]>([...cashierOrdersQueryKey], (prev: Order[] | undefined) =>
         applyCashierOrderEvent(prev ?? [], payload as { eventType: string }),
       )
+      if (paidAttempt && attempt) {
+        payAttemptRef.current = null
+        paidByRealtimeRef.current(attempt)
+      }
     })
 
     // Limpiar suscripción al desmontar
@@ -377,7 +396,11 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
     }
 
     setPartialParentItems(parentItems)
-    setPartialPercentages({ tax: parentOrder.bill?.taxPercentage ?? 0, tip: parentOrder.bill?.tipPercentage ?? 0 })
+    setPartialPercentages({
+      tax: parentOrder.bill?.taxPercentage ?? 0,
+      tip: parentOrder.bill?.tipPercentage ?? 0,
+      hasDiscounts: (parentOrder.bill?.totalDiscounts ?? 0) > 0 || ((parentOrder as CashierOrder).discounts?.length ?? 0) > 0,
+    })
     setSelectedTableId(tableId)
     setPartialPaymentDialogOpen(true)
   }
@@ -498,14 +521,26 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
   const showInvoice = (orderId: string) => {
     const order = getOrderById(orderId)
     if (!order) return
+    const invoice = invoiceForOrder(order, false)
+    if (!invoice) return
+    setInvoiceIsPayment(false)
+    setCompletedInvoiceData(invoice)
+    setShowCompletedInvoice(true)
+  }
 
+  /**
+   * The printable invoice of an order the screen holds. `lenient` (a payment
+   * confirmed by realtime, F3) prints "—" for a table or waiter it cannot
+   * resolve instead of giving up; a reprint keeps the strict rule.
+   */
+  function invoiceForOrder(order: Order, lenient: boolean): PrintableInvoice | null {
     // D6 Rule A: handler-only read, no subscription needed at the point of use.
     const takeaway = order.orderType === "takeaway"
     const table = takeaway ? undefined : useTableStore.getState().getTableById(order.tableId)
     const waiter = profiles.find((p) => p.id === order.waiter)
 
     // A takeaway order has no table: the invoice names its customer instead (S8).
-    if ((!takeaway && !table) || (!takeaway && !waiter)) return
+    if (!lenient && ((!takeaway && !table) || (!takeaway && !waiter))) return null
 
     // Asegurarse de que los items y el bill estén correctos
     const items = order.items
@@ -513,7 +548,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
 
     if (items.length === 0 || !bill) {
       toast.error("No se pueden generar facturas sin productos")
-      return
+      return null
     }
 
     const invoice: PrintableInvoice = {
@@ -528,19 +563,29 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
       items: items,
       bill: bill,
       waiter: waiter?.name ?? "N/A",
-      table: table ? table.number : takeawayLabel(order),
+      table: table ? table.number : takeaway ? takeawayLabel(order) : "—",
       ...(order.orderType
         ? { orderType: order.orderType, ...(takeaway ? { customerName: order.customerName ?? null } : {}) }
         : {}),
       paymentMethod: (order as any).paymentMethod || "cash"
     }
+    return invoice
+  }
 
-    setInvoiceIsPayment(false)
+  // F3 (H-065): the payment went through but its reply was lost. The realtime
+  // move to `paid` takes the order off the queue; instead of closing the panel
+  // silently, the cashier sees "Pago registrado" and the invoice.
+  paidByRealtimeRef.current = (order: Order) => {
+    const invoice = invoiceForOrder({ ...order, status: "paid" }, true)
+    toast.success("Pago registrado. La orden quedó pagada; se muestra su factura.")
+    if (!invoice) return
+    setInvoiceIsPayment(true)
     setCompletedInvoiceData(invoice)
     setShowCompletedInvoice(true)
   }
 
   const handlePaid = (invoice: PrintableInvoice) => {
+    payAttemptRef.current = null
     setInvoiceIsPayment(true)
     setCompletedInvoiceData(invoice)
     setShowCompletedInvoice(true)
@@ -904,6 +949,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
                   eyebrow={`Cobrar · ${selectedEntry.label}`}
                   onCancel={clearSelection}
                   onPaid={handlePaid}
+                  onSubmittingChange={handleSubmittingChange}
                   onTotalsChange={setPayTotals}
                   waiterName={selectedEntry.waiterName}
                   undoWindow
@@ -996,6 +1042,7 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
           tableItems={partialParentItems}
           taxPercentage={partialPercentages.tax}
           tipPercentage={partialPercentages.tip}
+          hasDiscounts={partialPercentages.hasDiscounts}
           onCreatePartialOrder={handleCreatePartialOrder}
           busy={isSplitting}
         />

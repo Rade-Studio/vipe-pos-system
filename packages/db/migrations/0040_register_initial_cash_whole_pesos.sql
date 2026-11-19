@@ -3,8 +3,10 @@
 -- CHECK makes it a database rule for every writer.
 --
 -- NOT VALID: rows written before this migration (Supabase era) are not
--- re-checked here, so the migration cannot fail on legacy data; every new row
--- and every update of initial_cash is checked.
+-- checked when it runs, so the migration cannot fail on legacy data. Postgres
+-- still checks the constraint on every INSERT and on every UPDATE of a row,
+-- whatever column the UPDATE changes: a legacy row with centavos or a negative
+-- initial_cash must be corrected before that register is updated or closed.
 ALTER TABLE public.cash_registers
   ADD CONSTRAINT cash_registers_initial_cash_whole_pesos
   CHECK (initial_cash >= 0 AND initial_cash = trunc(initial_cash)) NOT VALID;

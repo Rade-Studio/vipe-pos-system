@@ -13,7 +13,7 @@ const items = [
   { id: "i-2", name: "Hamburguesa", price: 21900, quantity: 1 },
 ] as unknown as CartItem[]
 
-function renderDialog(extra: { taxPercentage?: number; tipPercentage?: number } = {}) {
+function renderDialog(extra: { taxPercentage?: number; tipPercentage?: number; hasDiscounts?: boolean } = {}) {
   const onCreatePartialOrder = vi.fn()
   render(
     <PartialPaymentDialog
@@ -51,4 +51,20 @@ describe("PartialPaymentDialog (H-067)", () => {
     expect(screen.queryByTestId("partial-tax")).not.toBeInTheDocument()
     expect(screen.queryByTestId("partial-tip")).not.toBeInTheDocument()
   })
+
+  it("with promotions on the order, labels the figure as before promotions (F5)", () => {
+    renderDialog({ taxPercentage: 8, tipPercentage: 8, hasDiscounts: true })
+    fireEvent.click(screen.getByLabelText("Hamburguesa"))
+    expect(screen.getByText("Se cobrará antes de promociones:")).toBeInTheDocument()
+    expect(screen.getByRole("note")).toHaveTextContent(
+      "Esta cuenta tiene promociones o descuentos: se restan al crear la orden parcial. El valor exacto lo ves en el cobro.",
+    )
+  })
+
+  it("without discounts it keeps the plain label and no note", () => {
+    renderDialog({ taxPercentage: 8, tipPercentage: 8 })
+    expect(screen.getByText("Se cobrará:")).toBeInTheDocument()
+    expect(screen.queryByRole("note")).not.toBeInTheDocument()
+  })
 })
+

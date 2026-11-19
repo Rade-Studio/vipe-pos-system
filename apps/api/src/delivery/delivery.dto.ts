@@ -355,6 +355,11 @@ export class ClosedTodaySummary {
     description: 'Average dispatched_at → delivered_at of the delivered ones, rounded minutes; null without any.',
   })
   averageDeliveryMinutes!: number | null;
+  @ApiProperty({
+    type: 'integer',
+    description: 'Delivered deliveries from earlier days whose order is still unpaid (H-071); they stay on the board, apart from the counts of today.',
+  })
+  pendingFromEarlierDays!: number;
 }
 
 /** One row of the operator board (DeliveryOrderWithBill). */

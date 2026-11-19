@@ -138,3 +138,32 @@ describe("PaymentPanel — Spanish payment errors (H-066)", () => {
     expect(onPaid).not.toHaveBeenCalled()
   })
 })
+
+describe("PaymentPanel — key of a voided payment (H-065 / F4)", () => {
+  it("starts a new attempt with a new key, explained in Spanish, and the retry goes through", async () => {
+    payments.payOrder
+      .mockRejectedValueOnce(
+        new PaymentServiceError({
+          kind: "rejected",
+          message: "pay_order: idempotency key 1b2c belongs to a voided payment; retry with a new key",
+        }),
+      )
+      .mockResolvedValueOnce(paid)
+    const { onPaid } = renderPanel()
+    await addCashLine()
+    const register = await screen.findByRole("button", { name: /Registrar/ })
+    await waitFor(() => expect(register).toBeEnabled())
+    fireEvent.click(register)
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "El pago anterior de esta orden fue anulado. Vuelve a registrar para cobrarla con un intento nuevo.",
+    )
+    expect(screen.queryByText(/voided/)).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole("button", { name: /Registrar/ })).toBeEnabled())
+    fireEvent.click(screen.getByRole("button", { name: /Registrar/ }))
+    await waitFor(() => expect(onPaid).toHaveBeenCalledTimes(1))
+    const [first, second] = payments.payOrder.mock.calls.map((call) => call[0])
+    expect(second.idempotencyKey).not.toBe(first.idempotencyKey)
+    expect(second.tenders).toEqual(first.tenders)
+  })
+})

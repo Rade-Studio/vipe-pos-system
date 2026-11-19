@@ -324,6 +324,7 @@ export const PROMOTION_ERROR_CODES = [
   'end_before_start',
   'unknown_target',
   'discount_exceeds_price',
+  'discount_percentage_full',
 ] as const;
 export type PromotionErrorCode = (typeof PROMOTION_ERROR_CODES)[number];
 

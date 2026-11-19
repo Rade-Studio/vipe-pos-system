@@ -268,6 +268,35 @@ async function addCashLine() {
 }
 const bodyAt = (i: number) => payOrder.mock.calls[i][0] as any
 
+describe("payment saved but its reply lost (H-065 / F3)", () => {
+  it("shows Pago registrado and the invoice when the order turns paid after a failed submit", async () => {
+    renderCashier()
+    await openPaymentFor("Mesa 1")
+    await addCashLine()
+    payOrder.mockImplementationOnce(async () => { throw new PaymentServiceError({ kind: "unknown", message: "Failed to fetch" }) })
+    confirmPayment()
+    await waitFor(() => expect(payOrder).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(registerButton()).toBeEnabled())
+    vi.mocked(toast.success).mockClear()
+
+    emit(dbRow({ status: "paid" }))
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Pago registrado. La orden quedó pagada; se muestra su factura."))
+    expect(await screen.findByRole("button", { name: "Cerrar" })).toBeInTheDocument()
+    expect(payOrder).toHaveBeenCalledTimes(1)
+  })
+
+  it("an order paid elsewhere without an attempt here still leaves silently (PRESERVE)", async () => {
+    renderCashier()
+    await openPaymentFor("Mesa 1")
+    vi.mocked(toast.success).mockClear()
+    emit(dbRow({ status: "paid" }))
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "Cobrar orden" })).not.toBeInTheDocument())
+    expect(toast.success).not.toHaveBeenCalled()
+    expect(screen.queryByRole("button", { name: "Cerrar" })).not.toBeInTheDocument()
+  })
+})
+
 describe("PROBE re-bill", () => {
   it("P1 realtime items/qty change with a line added: notice, lines dropped, new amount", async () => {
     renderCashier()

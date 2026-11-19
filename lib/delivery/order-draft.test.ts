@@ -23,6 +23,7 @@ import {
   toCreateInput,
   previewDraftLines,
 } from './order-draft'
+import { parseDefaultFeeInput } from './courier-admin'
 import type {
   Customer,
   CustomerAddress,
@@ -820,5 +821,21 @@ describe('promotions pricing (S7)', () => {
       ],
       lineIds: d.cartLines.map((l) => l.id),
     })
+  })
+})
+
+describe('delivery fee validation (H-075)', () => {
+  it('parseDefaultFeeInput refuses negatives, decimals, text and blank', () => {
+    for (const raw of ['-2000', '4500.5', 'abc', '']) {
+      expect(parseDefaultFeeInput(raw)).toEqual({ ok: false, error: 'Ingresa un valor entero en pesos, mayor o igual a 0' })
+    }
+    expect(parseDefaultFeeInput('7.500')).toEqual({ ok: true, value: 7500 })
+  })
+
+  it('validateDraft reports the fee above the limit and accepts the limit itself', () => {
+    const over = orderDraftReducer(initialOrderDraft({ suggestedFee: 0 }), { type: 'setFee', value: 200_001 })
+    expect(validateDraft(over).find((e) => e.field === 'fee')?.message.replace(/\s/g, ' ')).toBe('El domicilio no puede superar $ 200.000')
+    const atLimit = orderDraftReducer(initialOrderDraft({ suggestedFee: 0 }), { type: 'setFee', value: 200_000 })
+    expect(validateDraft(atLimit).find((e) => e.field === 'fee')).toBeUndefined()
   })
 })

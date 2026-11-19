@@ -6866,6 +6866,8 @@ export interface components {
             failedCount: number;
             /** @description Average dispatched_at → delivered_at of the delivered ones, rounded minutes; null without any. */
             averageDeliveryMinutes: number | null;
+            /** @description Delivered deliveries from earlier days whose order is still unpaid (H-071); they stay on the board, apart from the counts of today. */
+            pendingFromEarlierDays: number;
         };
         DeliveryOrderWithBill: {
             delivery: components["schemas"]["DeliveryOrder"];
@@ -8862,7 +8864,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description 422 with `code` one of promotion_invalid, discount_required, discount_percentage_range, buy_quantity_invalid, pay_quantity_invalid, rest_discount_invalid, combo_price_invalid, combo_groups_count, combo_group_empty, min_subtotal_invalid, max_discount_invalid, time_window_invalid, days_of_week_invalid, channels_invalid, max_uses_invalid, end_before_start, unknown_target, discount_exceeds_price; `message` lists `<field>: <code>`. Nothing is saved. */
+            /** @description 422 with `code` one of promotion_invalid, discount_required, discount_percentage_range, buy_quantity_invalid, pay_quantity_invalid, rest_discount_invalid, combo_price_invalid, combo_groups_count, combo_group_empty, min_subtotal_invalid, max_discount_invalid, time_window_invalid, days_of_week_invalid, channels_invalid, max_uses_invalid, end_before_start, unknown_target, discount_exceeds_price, discount_percentage_full; `message` lists `<field>: <code>`. Nothing is saved. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -9025,7 +9027,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description 422 with `code` one of promotion_invalid, discount_required, discount_percentage_range, buy_quantity_invalid, pay_quantity_invalid, rest_discount_invalid, combo_price_invalid, combo_groups_count, combo_group_empty, min_subtotal_invalid, max_discount_invalid, time_window_invalid, days_of_week_invalid, channels_invalid, max_uses_invalid, end_before_start, unknown_target, discount_exceeds_price; `message` lists `<field>: <code>`. Nothing is saved. */
+            /** @description 422 with `code` one of promotion_invalid, discount_required, discount_percentage_range, buy_quantity_invalid, pay_quantity_invalid, rest_discount_invalid, combo_price_invalid, combo_groups_count, combo_group_empty, min_subtotal_invalid, max_discount_invalid, time_window_invalid, days_of_week_invalid, channels_invalid, max_uses_invalid, end_before_start, unknown_target, discount_exceeds_price, discount_percentage_full; `message` lists `<field>: <code>`. Nothing is saved. */
             422: {
                 headers: {
                     [name: string]: unknown;

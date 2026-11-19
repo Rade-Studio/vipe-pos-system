@@ -149,6 +149,10 @@ const ERROR_TOAST: Record<PaymentServiceErrorKind, string> = {
 /** pay_order's "order … is already paid": another register or tab charged it first. */
 const ALREADY_PAID = /is already paid/
 export const ALREADY_PAID_MESSAGE = "Esta orden ya fue cobrada en otra caja/pestaña"
+/** pay_order refuses the key of a voided payment: the retry needs a new attempt (F4). */
+const VOIDED_KEY = /belongs to a voided payment/
+export const VOIDED_KEY_MESSAGE =
+  "El pago anterior de esta orden fue anulado. Vuelve a registrar para cobrarla con un intento nuevo."
 
 /** The cashier-facing Spanish text of a tender issue (the helper's own text is for logs). */
 function issueMessage(
@@ -184,6 +188,7 @@ function issueMessage(
 function paymentErrorMessage(err: unknown): string {
   if (err instanceof PaymentServiceError) {
     if (ALREADY_PAID.test(err.message)) return ALREADY_PAID_MESSAGE
+    if (VOIDED_KEY.test(err.message)) return VOIDED_KEY_MESSAGE
     const base = ERROR_TOAST[err.kind]
     if (base) return base
     return err.message || "La operación fue rechazada por el servidor"
@@ -569,6 +574,8 @@ export function PaymentPanel({
         return
       }
       dispatch({ type: "submitFailed", error: msg })
+      // That key can never succeed again: the next try is a new attempt, same tenders.
+      if (msg === VOIDED_KEY_MESSAGE) dispatch({ type: "newAttempt", idempotencyKey: uuid() })
       setSubmitError(msg)
       toast.error(msg)
       const mismatch = err instanceof PaymentServiceError ? TOTAL_MISMATCH.exec(err.message) : null

@@ -393,16 +393,17 @@ export class DeliveryService {
 
   /**
    * "Cerrados hoy" of the board: delivered and cancelled deliveries updated
-   * since local midnight (the listActive rule, so a delivered one still unpaid
-   * from an earlier day counts too, H-071), failed ones that failed since
-   * then, and the average dispatched_at → delivered_at of the delivered ones
-   * updated today in rounded minutes.
+   * since local midnight, failed ones that failed since then, the average
+   * dispatched_at → delivered_at of today's delivered ones in rounded minutes,
+   * and apart the delivered ones from earlier days still unpaid (H-071, F6),
+   * which listActive keeps on the board.
    */
   async closedToday(): Promise<ClosedTodaySummary> {
     const now = this.clock.now().toISOString();
     const [row] = await rows<{ row: Json }>(this.uow, sql`
       SELECT jsonb_build_object(
-               'delivered', count(*) FILTER (WHERE od.delivery_status = 'delivered' AND (od.updated_at >= m.midnight OR o.status <> 'paid')),
+               'delivered', count(*) FILTER (WHERE od.delivery_status = 'delivered' AND od.updated_at >= m.midnight),
+               'pending_earlier', count(*) FILTER (WHERE od.delivery_status = 'delivered' AND od.updated_at < m.midnight AND o.status <> 'paid'),
                'cancelled', count(*) FILTER (WHERE od.delivery_status = 'cancelled' AND od.updated_at >= m.midnight),
                'failed', count(*) FILTER (WHERE od.delivery_status = 'failed' AND od.failed_at >= m.midnight),
                'average_minutes', round(avg(extract(epoch FROM od.delivered_at - od.dispatched_at) / 60)
@@ -411,6 +412,6 @@ export class DeliveryService {
         CROSS JOIN LATERAL (SELECT ${restaurantMidnight(now)} AS midnight) m
         LEFT JOIN public.order_deliveries od ON od.restaurant_id = r.id
         LEFT JOIN public.orders o ON o.id = od.order_id`);
-    return toClosedTodaySummary(row?.row ?? { delivered: 0, cancelled: 0, failed: 0, average_minutes: null });
+    return toClosedTodaySummary(row?.row ?? { delivered: 0, cancelled: 0, failed: 0, average_minutes: null, pending_earlier: 0 });
   }
 }

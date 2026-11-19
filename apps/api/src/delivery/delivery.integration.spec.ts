@@ -946,8 +946,11 @@ describe('delivery endpoints (Testcontainers, vipe_api)', () => {
 
         const res = await asB.get('/api/delivery/closed-today');
         expect(res.status).toBe(200);
-        // H-071: the unpaid one stays on the board, so it counts as delivered; the average is today's only.
-        expect(res.body).toEqual({ deliveredCount: 3, cancelledCount: 1, failedCount: 1, averageDeliveryMinutes: 25 });
+        // H-071 / F6: "hoy" counts today's only; the unpaid one from an earlier day is counted apart,
+        // so the board's delivered rows = deliveredCount + pendingFromEarlierDays.
+        expect(res.body).toEqual({
+          deliveredCount: 2, cancelledCount: 1, failedCount: 1, averageDeliveryMinutes: 25, pendingFromEarlierDays: 1,
+        });
         const board = (await asB.get('/api/delivery/active')).body.map((r: { delivery: { orderId: string; status: string } }) => r.delivery);
         expect(board.filter((row: { status: string }) => row.status === 'delivered').map((row: { orderId: string }) => row.orderId).sort())
           .toEqual([d30, d20, oldUnpaid].sort());
@@ -959,7 +962,9 @@ describe('delivery endpoints (Testcontainers, vipe_api)', () => {
         for (const caller of [operatorA(), cashierA(), kitchenA(), adminA()]) {
           const res = await caller.get('/api/delivery/closed-today');
           expect(res.status).toBe(200);
-          expect(Object.keys(res.body).sort()).toEqual(['averageDeliveryMinutes', 'cancelledCount', 'deliveredCount', 'failedCount']);
+          expect(Object.keys(res.body).sort()).toEqual([
+            'averageDeliveryMinutes', 'cancelledCount', 'deliveredCount', 'failedCount', 'pendingFromEarlierDays',
+          ]);
         }
         expect((await waiterA().get('/api/delivery/closed-today')).status).toBe(403);
       });
