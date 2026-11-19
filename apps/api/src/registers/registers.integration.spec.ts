@@ -45,9 +45,10 @@ const LEGACY_KEYS = [
   'tipAmount', 'totalDiscounts', 'waiterId',
 ];
 const SUMMARY_KEYS = [
-  'cashDeposits', 'cashWithdrawals', 'expectedCash', 'expectedCashAfterTips', 'initialCash', 'legacy', 'methods',
+  'cashDeposits', 'cashWithdrawals', 'delivery', 'expectedCash', 'expectedCashAfterTips', 'initialCash', 'legacy', 'methods',
   'paymentsCount', 'registersCount', 'tipsPayout', 'totalBilled', 'totalChange', 'totalSales', 'totalTips',
 ];
+const NO_DELIVERY = { fees: 0, ordersCount: 0, foodBilled: 0, cashCollected: 0, couriers: [] };
 const METHOD_KEYS = ['code', 'isActive', 'kind', 'name', 'paymentMethodId', 'sortOrder', 'tendersCount', 'total'];
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
@@ -293,11 +294,57 @@ describe('registers endpoints (Testcontainers, vipe_api)', () => {
         tipsPayout: 0,
         expectedCashAfterTips: 65000,
         legacy: { paymentsCount: 0, total: 0, tips: 0, change: 0, byMethod: {} },
+        delivery: NO_DELIVERY,
       });
       expect(Object.keys(res.body.methods[0]).sort()).toEqual(METHOD_KEYS);
       expect(res.body.methods.map((m: { code: string }) => m.code)).toEqual(['cash', 'transfer', 'nequi', 'bancolombia']);
       const both = await adminA().get(`/api/registers/summary?ids=${openId},${r.late}`);
       expect(both.body).toMatchObject({ registersCount: 2, initialCash: 60000, legacy: { paymentsCount: 1, total: 5000, byMethod: { cash: 5000 } } });
+    });
+
+    it('splits delivery fees from food sales and adds up each courier, keeping the totals (H-080)', async () => {
+      const A = fixtures.restaurantA;
+      const reg = '9a000000-0000-0000-0000-0000000000d0';
+      const courier = '9a000000-0000-0000-0000-0000000000d1';
+      await db(`INSERT INTO cash_registers (id, opening_timestamp, closing_timestamp, initial_cash, final_cash, status, restaurant_id)
+                  VALUES ($1, '2026-01-05 08:00:00-05', '2026-01-05 20:00:00-05', 10000, 0, 'closed', $2)`, [reg, A]);
+      await db(`INSERT INTO couriers (id, restaurant_id, name) VALUES ($1, $2, 'Carlos')`, [courier, A]);
+      await db(`INSERT INTO customers (id, phone, name, restaurant_id) VALUES ('9a000000-0000-0000-0000-0000000000d2', '3101234567', 'Ana', $1)`, [A]);
+      // A table order (20000 cash), a COD delivery of Carlos (30000 + 5000 fee, cash)
+      // and a prepaid delivery of Carlos (10000 + 3000 fee, Nequi).
+      const orders: [string, string, number, number, string, string | null][] = [
+        ['9a000000-0000-0000-0000-0000000000e1', 'dine_in', 20000, 0, 'cash', null],
+        ['9a000000-0000-0000-0000-0000000000e2', 'delivery', 30000, 5000, 'cash', 'cash_on_delivery'],
+        ['9a000000-0000-0000-0000-0000000000e3', 'delivery', 10000, 3000, 'nequi', 'prepaid'],
+      ];
+      for (const [id, type, food, fee, method, mode] of orders) {
+        await db(`INSERT INTO orders (id, status, order_type, subtotal, tax, tax_percentage, total, restaurant_id)
+                    VALUES ($1, 'paid', $2, $3::bigint, 0, 0, $3::bigint + $4::bigint, $5)`, [id, type, food, fee, A]);
+        if (mode) {
+          await db(`INSERT INTO order_deliveries (order_id, restaurant_id, customer_id, customer_name, customer_phone, address_line,
+                      delivery_fee, payment_mode, courier_id, delivery_status)
+                    VALUES ($1, $2, '9a000000-0000-0000-0000-0000000000d2', 'Ana', '3101234567', 'Calle 1', $3, $4, $5, 'delivered')`,
+            [id, A, fee, mode, courier]);
+        }
+        await db(`WITH p AS (
+                    INSERT INTO payments (restaurant_id, order_id, cash_register_id, amount_due, tip_amount, total_charged, change_given, idempotency_key)
+                    VALUES ($1, $2, $3, $4, 0, $4, 0, gen_random_uuid()) RETURNING id)
+                  INSERT INTO payment_tenders (restaurant_id, payment_id, line_no, payment_method_id, method_code, method_kind, amount, cash_received)
+                  SELECT $1, p.id, 1, m.id, m.code, m.kind, $4, CASE WHEN m.kind = 'cash' THEN $4::bigint END FROM p, payment_methods m WHERE m.restaurant_id = $1 AND m.code = $5`,
+          [A, id, reg, food + fee, method]);
+      }
+      const res = await cashierA().get(`/api/registers/summary?ids=${reg}`);
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ paymentsCount: 3, totalBilled: 68000, totalSales: 68000, expectedCash: 65000, expectedCashAfterTips: 65000 });
+      const totals = Object.fromEntries(res.body.methods.map((m: { code: string; total: number }) => [m.code, m.total]));
+      expect(totals).toMatchObject({ cash: 55000, nequi: 13000 });
+      expect(res.body.delivery).toEqual({
+        fees: 8000,
+        ordersCount: 2,
+        foodBilled: 60000,
+        cashCollected: 35000,
+        couriers: [{ courierId: courier, name: 'Carlos', ordersCount: 2, cashCollected: 35000, feesOwed: 8000 }],
+      });
     });
 
     it('keeps the RPC errors of register_summary with their code', async () => {

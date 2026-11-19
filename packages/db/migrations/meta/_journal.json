@@ -288,6 +288,13 @@
       "when": 1793939681411,
       "tag": "0042_staff_email_change",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1793946881411,
+      "tag": "0044_register_summary_delivery",
+      "breakpoints": true
     }
   ]
 }

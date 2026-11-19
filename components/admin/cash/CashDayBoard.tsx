@@ -230,6 +230,52 @@ export function MethodTotals({ methods, salesNet }: { methods: CashDay["totals"]
   )
 }
 
+type CourierLine = NonNullable<CashDay["totals"]["delivery"]>["couriers"][number]
+
+/** H-080 (S3): the delivery fees apart from the food sales and, per courier, the cash they bring and the fees owed. */
+export function DeliveryTotals({ fees, foodSales, couriers }: { fees: number; foodSales: number; couriers: CourierLine[] }) {
+  return (
+    <Region label="Domicilios">
+      <Panel title="Domicilios" description="Las tarifas de domicilio ya están en las ventas netas y en los métodos de pago; aquí van aparte.">
+        <div className="space-y-1 text-sm">
+          <p className="flex items-baseline justify-between gap-3">
+            <span>Ventas de comida</span>
+            <Money value={foodSales} />
+          </p>
+          <p className="flex items-baseline justify-between gap-3">
+            <span>Tarifas de domicilio</span>
+            <Money value={fees} />
+          </p>
+        </div>
+        {couriers.length === 0 ? (
+          <p className="mt-3 text-sm text-muted-foreground">Sin domicilios cobrados.</p>
+        ) : (
+          <ul aria-label="Domicilios por repartidor" className="mt-3 space-y-3 border-t pt-3 text-sm">
+            {couriers.map((courier) => (
+              <li key={courier.courierId ?? "none"} className="space-y-0.5">
+                <p>
+                  <span className="font-medium">{courier.name ?? "Sin repartidor"}</span>
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    {courier.ordersCount} {courier.ordersCount === 1 ? "domicilio" : "domicilios"}
+                  </span>
+                </p>
+                <p className="flex items-baseline justify-between gap-3">
+                  <span>Efectivo que trae</span>
+                  <Money value={courier.cashCollected} />
+                </p>
+                <p className="flex items-baseline justify-between gap-3">
+                  <span>Tarifas que se le deben</span>
+                  <Money value={courier.feesOwed} />
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Panel>
+    </Region>
+  )
+}
+
 export function WaiterTips({ tips, total }: { tips: CashDay["tipsByWaiter"]; total: number }) {
   return (
     <Region label="Propinas (no son ingreso del restaurante)">
@@ -327,6 +373,13 @@ export function CashDayBoard({ day, validatingId, onValidate }: CashDayBoardProp
       <div className="grid gap-4 lg:grid-cols-2">
         <MethodTotals methods={day.totals.methods} salesNet={day.totals.salesNet} />
         <WaiterTips tips={day.tipsByWaiter} total={day.totals.tips} />
+        {day.totals.delivery && (
+          <DeliveryTotals
+            fees={day.totals.delivery.fees}
+            foodSales={day.totals.delivery.foodBilled}
+            couriers={day.totals.delivery.couriers}
+          />
+        )}
       </div>
       <Voids voids={day.voids} />
     </div>

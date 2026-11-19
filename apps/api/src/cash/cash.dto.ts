@@ -3,7 +3,14 @@ import { z } from 'zod';
 import { dateQuery } from '../common/validation';
 import { PAYMENT_METHOD_KINDS, type PaymentMethodKind } from '../payments/payments.dto';
 import { TAX_TYPES, type TaxType } from '../settings/business-config';
-import { CASH_TRANSACTION_TYPES, type CashTransactionReason, type CashTransactionType, ProfileRef } from '../registers/registers.dto';
+import {
+  CASH_TRANSACTION_TYPES,
+  type CashTransactionReason,
+  type CashTransactionType,
+  ProfileRef,
+  RegisterCourierSummary,
+  RegisterDeliverySummary,
+} from '../registers/registers.dto';
 
 /** GET /cash/report spans at most this many business days (from and to included). */
 export const MAX_REPORT_DAYS = 366;
@@ -70,6 +77,11 @@ export class CashDayRegister {
   @ApiProperty({ type: Number, nullable: true }) countedCash!: number | null;
   @ApiProperty({ type: Number, nullable: true }) cashDifference!: number | null;
   @ApiProperty({ type: String, nullable: true }) closeNote!: string | null;
+  @ApiPropertyOptional({
+    type: RegisterDeliverySummary,
+    description: 'Delivery fees apart from the food sales and per courier (H-080). Always on a day; absent from Z snapshots stored before it.',
+  })
+  delivery?: RegisterDeliverySummary;
 }
 
 export class CashDeliveries {
@@ -97,6 +109,11 @@ export class CashDayTotals {
   @ApiProperty({ description: 'Sum of the registers expected cash after tips.' }) expected!: number;
   @ApiProperty({ description: 'Sum of the stored counts (registers without a count add 0).' }) counted!: number;
   @ApiProperty({ description: 'Sum of cash_difference.' }) difference!: number;
+  @ApiPropertyOptional({
+    type: RegisterDeliverySummary,
+    description: 'Delivery fees apart from the food sales and per courier, added over the registers (H-080). Always on a day; absent from Z snapshots stored before it.',
+  })
+  delivery?: RegisterDeliverySummary;
 }
 
 export class CashWaiterTips {
@@ -269,6 +286,8 @@ export class CashPeriodBucket {
   @ApiProperty({ type: [CashMethodTotal] }) methods!: CashMethodTotal[];
   @ApiProperty({ description: 'Sum of cash_difference of the registers.' }) difference!: number;
   @ApiProperty({ type: CashVoidTotals }) voids!: CashVoidTotals;
+  @ApiPropertyOptional({ description: 'Delivery fees of the live payments (included in salesNet) (H-080). Always sent; optional for older clients.' })
+  deliveryFees?: number;
 }
 
 export class CashCashierDifference {
@@ -288,4 +307,9 @@ export class CashReport {
   @ApiProperty({ type: CashPeriodBucket, description: 'The period of the same length right before `from`.' }) previous!: CashPeriodBucket;
   @ApiProperty({ type: [CashCashierDifference], description: 'By name.' }) byCashier!: CashCashierDifference[];
   @ApiProperty({ type: [CashWaiterTips] }) tipsByWaiter!: CashWaiterTips[];
+  @ApiPropertyOptional({
+    type: [RegisterCourierSummary],
+    description: 'Per courier over the range, by name; deliveries without a courier last (H-080). Always sent; optional for older clients.',
+  })
+  byCourier?: RegisterCourierSummary[];
 }

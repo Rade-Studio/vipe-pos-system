@@ -16527,6 +16527,72 @@
           "byMethod"
         ]
       },
+      "RegisterCourierSummary": {
+        "type": "object",
+        "properties": {
+          "courierId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "ordersCount": {
+            "type": "number"
+          },
+          "cashCollected": {
+            "type": "number",
+            "description": "Cash tenders of their cash-on-delivery orders: the cash they bring back."
+          },
+          "feesOwed": {
+            "type": "number",
+            "description": "Delivery fees of their paid orders, whatever the payment mode: owed to them."
+          }
+        },
+        "required": [
+          "courierId",
+          "name",
+          "ordersCount",
+          "cashCollected",
+          "feesOwed"
+        ]
+      },
+      "RegisterDeliverySummary": {
+        "type": "object",
+        "properties": {
+          "fees": {
+            "type": "number",
+            "description": "Delivery fees of the live payments."
+          },
+          "ordersCount": {
+            "type": "number"
+          },
+          "foodBilled": {
+            "type": "number",
+            "description": "totalBilled minus the delivery fees."
+          },
+          "cashCollected": {
+            "type": "number",
+            "description": "Cash tenders of cash-on-delivery orders."
+          },
+          "couriers": {
+            "description": "By courier name; deliveries without a courier last.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegisterCourierSummary"
+            }
+          }
+        },
+        "required": [
+          "fees",
+          "ordersCount",
+          "foodBilled",
+          "cashCollected",
+          "couriers"
+        ]
+      },
       "RegisterSummary": {
         "type": "object",
         "properties": {
@@ -16574,6 +16640,9 @@
           },
           "legacy": {
             "$ref": "#/components/schemas/RegisterLegacySummary"
+          },
+          "delivery": {
+            "$ref": "#/components/schemas/RegisterDeliverySummary"
           }
         },
         "required": [
@@ -16590,7 +16659,8 @@
           "expectedCash",
           "tipsPayout",
           "expectedCashAfterTips",
-          "legacy"
+          "legacy",
+          "delivery"
         ]
       },
       "OpenRegisterRequest": {
@@ -17004,6 +17074,14 @@
           "closeNote": {
             "type": "string",
             "nullable": true
+          },
+          "delivery": {
+            "description": "Delivery fees apart from the food sales and per courier (H-080). Always on a day; absent from Z snapshots stored before it.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RegisterDeliverySummary"
+              }
+            ]
           }
         },
         "required": [
@@ -17115,6 +17193,14 @@
           "difference": {
             "type": "number",
             "description": "Sum of cash_difference."
+          },
+          "delivery": {
+            "description": "Delivery fees apart from the food sales and per courier, added over the registers (H-080). Always on a day; absent from Z snapshots stored before it.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RegisterDeliverySummary"
+              }
+            ]
           }
         },
         "required": [
@@ -17612,6 +17698,10 @@
           },
           "voids": {
             "$ref": "#/components/schemas/CashVoidTotals"
+          },
+          "deliveryFees": {
+            "type": "number",
+            "description": "Delivery fees of the live payments (included in salesNet) (H-080). Always sent; optional for older clients."
           }
         },
         "required": [
@@ -17698,6 +17788,13 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/CashWaiterTips"
+            }
+          },
+          "byCourier": {
+            "description": "Per courier over the range, by name; deliveries without a courier last (H-080). Always sent; optional for older clients.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegisterCourierSummary"
             }
           }
         },

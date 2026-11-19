@@ -17,6 +17,7 @@ import {
   type SlipLine,
   wrapText,
 } from "./slip-format"
+import { deliverySlipLines } from "./delivery-lines"
 
 export interface ZReportSlipProps {
   business: SlipBusiness
@@ -99,6 +100,7 @@ export function zReportLines({ business, z, printedAt, paperMm = 80 }: ZReportSl
     ruleLine(width),
     { text: "Métodos de pago", bold: true },
     ...methods.map((method) => row(`${method.name} (${method.count})`, pesos(method.total))),
+    ...deliverySlipLines(totals, width),
     ruleLine(width),
     ...wrapText("Propinas (no son ingreso del restaurante)", width).map((text) => ({ text, bold: true })),
     ...wrapText(taxes.type ? `No suman a ventas ni a ${taxes.type}.` : "No suman a ventas ni al impuesto.", width).map((text) => ({ text })),
