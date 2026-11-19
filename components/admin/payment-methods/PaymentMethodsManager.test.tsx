@@ -51,3 +51,29 @@ describe("PaymentMethodsManager reorder", () => {
     expect(payments.reorderPaymentMethods).toHaveBeenCalledWith(["m-nequi", "m-cash", "m-card"])
   })
 })
+
+describe("PaymentMethodsManager locked switch (H-017)", () => {
+  it("explains why the last active cash method cannot be turned off", async () => {
+    renderManager()
+    await screen.findByText("Tarjeta")
+    const [cashSwitch, nequiSwitch] = screen.getAllByRole("switch")
+    expect(cashSwitch).toBeDisabled()
+    expect(cashSwitch).toHaveAccessibleDescription(
+      "Debe quedar al menos un método de pago en efectivo activo para dar cambio.",
+    )
+    expect(screen.getByText("Debe quedar al menos un método de pago en efectivo activo para dar cambio.")).toBeVisible()
+    expect(nequiSwitch).toBeEnabled()
+    expect(nequiSwitch).not.toHaveAccessibleDescription()
+  })
+
+  it("explains why the only active method cannot be turned off", async () => {
+    payments.listPaymentMethods.mockResolvedValue([
+      { id: "m-cash", code: "cash", name: "Efectivo", kind: "cash", isActive: true, sortOrder: 0 },
+      { id: "m-nequi", code: "nequi", name: "Nequi", kind: "electronic", isActive: false, sortOrder: 1 },
+    ])
+    renderManager()
+    await screen.findByText("Nequi")
+    const [cashSwitch] = screen.getAllByRole("switch")
+    expect(cashSwitch).toHaveAccessibleDescription("Debe quedar al menos un método de pago activo para poder cobrar.")
+  })
+})

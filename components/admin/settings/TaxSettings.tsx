@@ -102,7 +102,7 @@ export function TaxSettings() {
         <SettingsRow
           label="Impuesto"
           htmlFor="taxPercentage"
-          description="Se suma al subtotal de todas las órdenes."
+          description="Se suma al subtotal de todas las órdenes. De 0 % a 20 %, con decimales: el INC es 8 % y el IVA general 19 %."
         >
           <PercentField
             id="taxPercentage"
@@ -110,14 +110,14 @@ export function TaxSettings() {
             onChange={(value) => update("taxPercentage", value)}
             min={0}
             max={20}
-            step={1}
+            step={0.01}
             disabled={disabled}
           />
         </SettingsRow>
         <SettingsRow
           label="Propina sugerida"
           htmlFor="tipPercentage"
-          description="Se muestra en la factura; el cliente puede retirarla."
+          description="Se muestra en la factura; el cliente puede retirarla. De 0 % a 20 %, con decimales; lo usual es 10 %."
         >
           <PercentField
             id="tipPercentage"
@@ -125,7 +125,7 @@ export function TaxSettings() {
             onChange={(value) => update("tipPercentage", value)}
             min={0}
             max={20}
-            step={1}
+            step={0.01}
             disabled={disabled}
           />
         </SettingsRow>

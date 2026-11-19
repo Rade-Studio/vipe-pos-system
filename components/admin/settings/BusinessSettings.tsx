@@ -8,6 +8,7 @@ import { SaveBar } from "@/components/admin/common/SaveBar"
 import { SettingsRow, SettingsSection } from "@/components/admin/common/SettingsSection"
 import { SettingsPage } from "./SettingsPage"
 import { useSettingsDraft } from "./use-settings-draft"
+import { COLOMBIAN_PHONE_ERROR, normalizeColombianPhone } from "@/lib/delivery/phone"
 
 const KEYS = ["businessName", "businessAddress", "businessPhone", "businessNIT"] as const
 
@@ -86,13 +87,35 @@ function ReceiptPreview({ name, nit, address, phone }: { name: string; nit: stri
   )
 }
 
+/**
+ * H-035: the name is required; a phone typed now must be a Colombian mobile or
+ * landline (blank prints "N/A"). An unchanged stored phone is not re-checked.
+ * Only here: the config store sends every key on each save.
+ */
+function businessErrors(
+  draft: { businessName: string; businessPhone: string },
+  saved: { businessPhone: string },
+): Partial<Record<"businessName" | "businessPhone", string>> {
+  const errors: Partial<Record<"businessName" | "businessPhone", string>> = {}
+  if (draft.businessName.trim() === "") errors.businessName = "El nombre del negocio es obligatorio"
+  const phone = draft.businessPhone.trim()
+  if (phone !== "" && draft.businessPhone !== saved.businessPhone && normalizeColombianPhone(phone) === null) {
+    errors.businessPhone = COLOMBIAN_PHONE_ERROR
+  }
+  return errors
+}
+
 export function BusinessSettings() {
   const { toast } = useToast()
-  const { draft, update, dirty, save, discard, saving, isLoading } = useSettingsDraft(KEYS)
+  const { draft, saved, update, dirty, save, discard, saving, isLoading } = useSettingsDraft(KEYS)
   const cutoff = useBusinessDayCutoff()
   const [savingCutoff, setSavingCutoff] = useState(false)
+  const [errors, setErrors] = useState<ReturnType<typeof businessErrors>>({})
 
   const saveAll = async () => {
+    const found = dirty ? businessErrors(draft, saved) : {}
+    setErrors(found)
+    if (Object.keys(found).length > 0) return
     if (cutoff.dirty) {
       setSavingCutoff(true)
       const ok = await cutoff.save()
@@ -113,7 +136,14 @@ export function BusinessSettings() {
                 value={draft[field.key]}
                 onChange={(event) => update(field.key, event.target.value)}
                 disabled={isLoading || saving}
+                aria-invalid={field.key in errors}
+                aria-describedby={field.key in errors ? `${field.id}-error` : undefined}
               />
+              {(field.key === "businessName" || field.key === "businessPhone") && errors[field.key] && (
+                <p id={`${field.id}-error`} className="mt-1 text-xs text-destructive">
+                  {errors[field.key]}
+                </p>
+              )}
             </SettingsRow>
           ))}
           <SettingsRow
@@ -151,6 +181,7 @@ export function BusinessSettings() {
         saving={saving || savingCutoff}
         onSave={saveAll}
         onDiscard={() => {
+          setErrors({})
           discard()
           cutoff.discard()
         }}

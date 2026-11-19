@@ -7752,6 +7752,9 @@
           "403": {
             "description": "Not admin or delivery_operator."
           },
+          "409": {
+            "description": "An active courier already uses the phone (H-038)."
+          },
           "422": {
             "description": "Invalid input or an RPC rejection (P0001, 22023) with its message verbatim and `code`."
           }
@@ -7806,6 +7809,9 @@
           },
           "404": {
             "description": ""
+          },
+          "409": {
+            "description": "Another active courier already uses the phone (H-038)."
           },
           "422": {
             "description": "Invalid input or an RPC rejection (P0001, 22023) with its message verbatim and `code`."
@@ -21603,7 +21609,7 @@
           "phone": {
             "type": "string",
             "nullable": true,
-            "description": "Normalised like the web; blank or null clears it."
+            "description": "Colombian mobile (3 + 9 digits) or landline (60 + 8 digits), +57 optional, normalised to 10 digits; blank or null clears it. 409 when an active courier already uses it."
           }
         },
         "required": [
@@ -21621,7 +21627,7 @@
           "phone": {
             "type": "string",
             "nullable": true,
-            "description": "Blank or null clears it."
+            "description": "Same rule as on create; blank or null clears it. 409 when another active courier uses it."
           },
           "isActive": {
             "type": "boolean"
@@ -21639,7 +21645,7 @@
           "phone": {
             "type": "string",
             "maxLength": 100,
-            "description": "Looked up or registered by phone; 7..15 digits validated by create_delivery_order (not normalised)."
+            "description": "Looked up or registered by phone; a Colombian mobile (3 + 9 digits) or landline (60 + 8 digits), +57 optional, normalised to 10 digits (422 otherwise)."
           },
           "name": {
             "type": "string",
@@ -22230,7 +22236,8 @@
           "password": {
             "type": "string",
             "minLength": 8,
-            "maxLength": 128
+            "maxLength": 128,
+            "description": "Letters plus a number, symbol or space; common passwords are refused (422)."
           },
           "fullName": {
             "type": "string",
@@ -22266,6 +22273,12 @@
       "UpdateStaffRequest": {
         "type": "object",
         "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 100,
+            "description": "New login email; trimmed and lower-cased; unique (409). Open sessions are kept."
+          },
           "fullName": {
             "type": "string",
             "minLength": 1,
@@ -22297,7 +22310,8 @@
           "password": {
             "type": "string",
             "minLength": 8,
-            "maxLength": 128
+            "maxLength": 128,
+            "description": "Letters plus a number, symbol or space; common passwords are refused (422)."
           }
         },
         "required": [

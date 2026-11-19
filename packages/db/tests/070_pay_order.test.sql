@@ -762,6 +762,10 @@ RESET ROLE;
 -- ============================================
 -- 10. Inactive method fails
 -- ============================================
+-- A second active cash method lets 0041 (keep one active cash method) allow
+-- deactivating the first one.
+INSERT INTO public.payment_methods (restaurant_id, code, name, kind)
+VALUES ('aaaaaaaa-0000-4000-8000-000000000071', 'cash_two', 'Efectivo 2', 'cash');
 UPDATE public.payment_methods SET is_active = false
  WHERE restaurant_id = 'aaaaaaaa-0000-4000-8000-000000000071' AND code = 'cash';
 

@@ -73,3 +73,44 @@ describe("BusinessSettings · hora de corte", () => {
     expect(config.save).not.toHaveBeenCalled()
   })
 })
+
+describe("BusinessSettings · validation (H-035)", () => {
+  const save = async () => {
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Guardar/ }))
+    })
+  }
+
+  it("requires the business name and saves nothing while it is blank", async () => {
+    render(<BusinessSettings />)
+    const name = screen.getByLabelText("Nombre del negocio")
+    fireEvent.change(name, { target: { value: "   " } })
+    await save()
+    expect(saveConfigToDB).not.toHaveBeenCalled()
+    expect(useConfigStore.getState().businessName).toBe("Demo")
+    expect(name).toHaveAttribute("aria-invalid", "true")
+    expect(document.getElementById(name.getAttribute("aria-describedby")!)).toHaveTextContent(
+      "El nombre del negocio es obligatorio",
+    )
+  })
+
+  it("refuses a new phone that is not a Colombian mobile or landline", async () => {
+    render(<BusinessSettings />)
+    const phone = screen.getByLabelText("Teléfono")
+    fireEvent.change(phone, { target: { value: "abc" } })
+    await save()
+    expect(saveConfigToDB).not.toHaveBeenCalled()
+    expect(useConfigStore.getState().businessPhone).toBe("123")
+    expect(document.getElementById(phone.getAttribute("aria-describedby")!)).toHaveTextContent(
+      "Ingresa un celular de 10 dígitos que empiece por 3 o un fijo de 10 dígitos que empiece por 60",
+    )
+  })
+
+  it("accepts a landline as typed and keeps an unchanged older phone", async () => {
+    render(<BusinessSettings />)
+    fireEvent.change(screen.getByLabelText("Teléfono"), { target: { value: "(601) 234 5678" } })
+    await save()
+    expect(useConfigStore.getState().businessPhone).toBe("(601) 234 5678")
+    expect(saveConfigToDB).toHaveBeenCalledTimes(1)
+  })
+})

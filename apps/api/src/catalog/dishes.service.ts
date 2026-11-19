@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { and, eq, schema, sql } from '@vipe/db';
 import type { z } from 'zod';
+import { assertUniqueName } from '../common/duplicate-name';
 import { UnitOfWork } from '../db/unit-of-work';
 import { type createDishSchema, type Dish, DISH_MESSAGES, type dishListQuerySchema, type updateDishSchema } from './catalog.dto';
 import { toDish } from './catalog.mappers';
@@ -48,6 +49,7 @@ export class DishesService {
 
   async create(input: z.infer<typeof createDishSchema>): Promise<Dish> {
     await this.assertCategory(input.categoryId);
+    await assertUniqueName(this.uow, 'dishes', input.name);
     await this.assertSubcategory(input, { categoryId: null, subcategoryId: null });
     // After the last dish of its group, as categories and subcategories are created.
     const sortOrder = afterLast(input.categoryId ?? null, input.subcategoryId ?? null);
@@ -62,6 +64,7 @@ export class DishesService {
 
   async update(id: string, input: DishInput): Promise<Dish> {
     await this.assertCategory(input.categoryId);
+    await assertUniqueName(this.uow, 'dishes', input.name, id);
     const [current] = await this.uow.db
       .select({ categoryId: dishes.categoryId, subcategoryId: dishes.subcategoryId })
       .from(dishes)

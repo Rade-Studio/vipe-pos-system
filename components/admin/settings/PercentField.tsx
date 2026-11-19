@@ -15,6 +15,9 @@ interface PercentFieldProps {
   disabled?: boolean
 }
 
+/** H-035: percentages keep at most two decimals (8.5 %, 19 %). */
+const round2 = (value: number) => Math.round(value * 100) / 100
+
 /** Numeric input and slider bound to the same percentage. */
 export function PercentField({ id, value, onChange, min, max, step, disabled }: PercentFieldProps) {
   const [text, setText] = useState(String(value))
@@ -24,7 +27,8 @@ export function PercentField({ id, value, onChange, min, max, step, disabled }: 
   }, [value])
 
   const commit = () => {
-    const next = clampSetting(text, { min, max })
+    const clamped = clampSetting(text, { min, max })
+    const next = clamped === null ? null : round2(clamped)
     if (next === null) setText(String(value))
     else if (next !== value) onChange(next)
     else setText(String(value))
@@ -54,7 +58,7 @@ export function PercentField({ id, value, onChange, min, max, step, disabled }: 
           onChange={(event) => {
             setText(event.target.value)
             const next = clampSetting(event.target.value, { min, max })
-            if (next !== null && String(next) === event.target.value) onChange(next)
+            if (next !== null && round2(next) === next && String(next) === event.target.value) onChange(next)
           }}
           onBlur={commit}
           disabled={disabled}

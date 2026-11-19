@@ -18,6 +18,9 @@ export const STAFF_MESSAGES = {
   invalid: 'Solicitud inválida',
   email: 'El correo electrónico no es válido',
   password: 'La contraseña debe tener al menos 8 caracteres',
+  /** H-029: lib/api/staff-password.ts STAFF_PASSWORD_MESSAGES, same texts. */
+  passwordMix: 'La contraseña debe combinar letras con números, símbolos o espacios',
+  passwordCommon: 'La contraseña es demasiado común; elige otra',
   weakPassword: 'La contraseña no cumple los requisitos de seguridad',
   fullName: 'El nombre debe tener entre 1 y 100 caracteres',
   role: 'El rol no es válido',
@@ -35,10 +38,22 @@ const email = z
   .string({ error: STAFF_MESSAGES.email })
   .transform((value) => value.trim().toLowerCase())
   .pipe(z.string().max(100, STAFF_MESSAGES.email).regex(EMAIL_RE, STAFF_MESSAGES.email));
+/** Lower-cased passwords refused as too common (H-029); the web form keeps the same list. */
+export const COMMON_PASSWORDS: ReadonlySet<string> = new Set([
+  'password1', 'password12', 'password123', 'passw0rd', 'qwerty123', 'qwerty12', 'abc12345', 'abcd1234', 'admin123',
+  'admin1234', 'contraseña1', 'contraseña123', 'contrasena1', 'contrasena123', 'colombia1', 'colombia123', 'restaurante1',
+  'iloveyou1', 'welcome1', '1q2w3e4r', 'a1b2c3d4',
+]);
+/**
+ * H-029: at least 8 characters, letters plus a number, symbol or space (a
+ * passphrase like "correct horse battery staple" passes), and not a common one.
+ */
 const password = z
   .string({ error: STAFF_MESSAGES.password })
   .min(8, STAFF_MESSAGES.password)
-  .max(MAX_PASSWORD, STAFF_MESSAGES.weakPassword);
+  .max(MAX_PASSWORD, STAFF_MESSAGES.weakPassword)
+  .refine((value) => /\p{L}/u.test(value) && /[^\p{L}]/u.test(value), STAFF_MESSAGES.passwordMix)
+  .refine((value) => !COMMON_PASSWORDS.has(value.trim().toLowerCase()), STAFF_MESSAGES.passwordCommon);
 const fullName = z
   .string({ error: STAFF_MESSAGES.fullName })
   .transform((value) => value.trim())
@@ -64,6 +79,8 @@ export const createStaffSchema = strict({
 });
 
 export const updateStaffSchema = strict({
+  /** H-029: the login email; trimmed, lower-cased, unique (409). */
+  email: email.optional(),
   fullName: fullName.optional(),
   username: username.optional(),
   active: active.optional(),
@@ -104,7 +121,8 @@ export class StaffMember {
 
 export class CreateStaffRequest {
   @ApiProperty({ format: 'email', maxLength: 100, description: 'Trimmed and lower-cased; unique (409).' }) email!: string;
-  @ApiProperty({ minLength: 8, maxLength: MAX_PASSWORD }) password!: string;
+  @ApiProperty({ minLength: 8, maxLength: MAX_PASSWORD, description: 'Letters plus a number, symbol or space; common passwords are refused (422).' })
+  password!: string;
   @ApiProperty({ minLength: 1, maxLength: 100 }) fullName!: string;
   @ApiProperty({ enum: STAFF_ROLES }) role!: StaffRole;
   @ApiPropertyOptional({ type: String, nullable: true, maxLength: 50 }) username?: string | null;
@@ -112,6 +130,8 @@ export class CreateStaffRequest {
 }
 
 export class UpdateStaffRequest {
+  @ApiPropertyOptional({ format: 'email', maxLength: 100, description: 'New login email; trimmed and lower-cased; unique (409). Open sessions are kept.' })
+  email?: string;
   @ApiPropertyOptional({ minLength: 1, maxLength: 100 }) fullName?: string;
   @ApiPropertyOptional({ type: String, nullable: true, maxLength: 50, description: 'Null or blank clears it.' })
   username?: string | null;
@@ -125,7 +145,8 @@ export class SetStaffPinRequest {
 }
 
 export class SetStaffPasswordRequest {
-  @ApiProperty({ minLength: 8, maxLength: MAX_PASSWORD }) password!: string;
+  @ApiProperty({ minLength: 8, maxLength: MAX_PASSWORD, description: 'Letters plus a number, symbol or space; common passwords are refused (422).' })
+  password!: string;
 }
 
 export class StaffSupervisor {

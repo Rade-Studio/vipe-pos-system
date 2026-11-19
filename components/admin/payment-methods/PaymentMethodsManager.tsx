@@ -326,7 +326,11 @@ export function PaymentMethodsManager() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {ordered.map((m, idx) => (
+              {ordered.map((m, idx) => {
+                // H-017: a locked switch says why (the server refuses the same change).
+                const verdict = m.isActive ? canDeactivate(ordered, m.id) : true
+                const lockReason = verdict === true ? null : DEACTIVATE_REASON[verdict.reason]
+                return (
                 <TableRow key={m.id}>
                   <TableCell className="font-medium">
                     <div className="flex flex-col">
@@ -376,8 +380,9 @@ export function PaymentMethodsManager() {
                       <Switch
                         checked={m.isActive}
                         onCheckedChange={(checked) => handleToggle(m, checked === true)}
-                        disabled={gateFor(m.id).isRunning() || (m.isActive && canDeactivate(ordered, m.id) !== true)}
+                        disabled={gateFor(m.id).isRunning() || lockReason !== null}
                         aria-label={m.isActive ? "Desactivar método" : "Activar método"}
+                        aria-describedby={lockReason ? `pm-lock-${m.id}` : undefined}
                       />
                       <Button
                         type="button"
@@ -390,9 +395,15 @@ export function PaymentMethodsManager() {
                         <Pencil className="h-4 w-4" />
                       </Button>
                     </div>
+                    {lockReason && (
+                      <p id={`pm-lock-${m.id}`} className="mt-1 text-xs text-muted-foreground">
+                        {lockReason}
+                      </p>
+                    )}
                   </TableCell>
                 </TableRow>
-              ))}
+                )
+              })}
             </TableBody>
           </Table>
         )}

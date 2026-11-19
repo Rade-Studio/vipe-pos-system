@@ -1107,7 +1107,10 @@ SELECT is(pg_temp.pt_has_privilege('vipe_api', 'public.payment_transactions', 'S
   'vipe_api keeps SELECT on the legacy payment history');
 
 -- 9. Regression: snapshot is frozen at insert time. Placed last: the catalog
--- mutation leaks into the surrounding transaction.
+-- mutation leaks into the surrounding transaction. A second active cash method
+-- lets 0041 (keep one active cash method) allow reclassifying the first one.
+INSERT INTO public.payment_methods (restaurant_id, code, name, kind)
+VALUES ('aaaaaaaa-0000-4000-8000-000000000061', 'cash_two', 'Efectivo 2', 'cash');
 SELECT lives_ok(
   $body$ DO $q$ BEGIN
        UPDATE public.payment_methods SET kind = 'electronic', name = 'CASH_RENAMED'

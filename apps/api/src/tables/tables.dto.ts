@@ -24,6 +24,8 @@ export const STATUS_WORDS: Record<string, string> = {
 /** 409 messages of the tables endpoints, in the language the screens show them. */
 export const TABLE_MESSAGES = {
   openOrders: 'La mesa tiene órdenes abiertas',
+  /** H-022: tables_restaurant_id_number_key, checked first for a Spanish message. */
+  duplicateNumber: (n: number) => `Ya existe la mesa ${n}`,
   statusNeedsOrder: 'La mesa no tiene una orden abierta: solo el flujo de pedidos la pone en cocina o servida.',
   statusHasOrder: 'La mesa tiene una orden abierta: cóbrala o cancélala antes de dejarla libre o reservada.',
   releaseHasOrder: 'La mesa tiene una orden abierta: cóbrala o cancélala antes de liberarla.',
