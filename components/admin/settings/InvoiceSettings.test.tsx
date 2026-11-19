@@ -117,6 +117,7 @@ describe("Facturación (DIAN) settings", () => {
   it.each([
     ["Prefijo", "PO S", "El prefijo lleva de 1 a 10 letras o números, sin espacios ni guiones"],
     ["Número final", "0", "El número final del rango autorizado debe ser mayor o igual al inicial"],
+    ["Resolución DIAN", "1876\u001b@40", "La resolución solo lleva letras, números, espacios y los signos - . /"],
   ])("refuses %s = %j before saving, with a message", async (label, value, message) => {
     await renderPage()
     await change(label, value)

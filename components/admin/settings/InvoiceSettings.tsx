@@ -46,8 +46,11 @@ const DEFAULT_VALUES: InvoiceValues = {
   taxRegime: null,
 }
 const PREFIX = /^[A-Z0-9]{1,10}$/
+/** Same rule as the API: the resolution reaches raw ESC/POS output. */
+const RESOLUTION = /^[\p{L}\p{N} ./-]*$/u
 const EXPIRING_DAYS = 30
 export const PREFIX_MESSAGE = "El prefijo lleva de 1 a 10 letras o números, sin espacios ni guiones"
+export const RESOLUTION_MESSAGE = "La resolución solo lleva letras, números, espacios y los signos - . /"
 export const RANGE_MESSAGE = "El número final del rango autorizado debe ser mayor o igual al inicial"
 export const RANGE_FROM_MESSAGE = "El número inicial debe ser un entero desde 1"
 export const VALIDITY_MESSAGE = "La fecha final de la vigencia debe ser igual o posterior a la inicial"
@@ -82,6 +85,7 @@ function fromDraft(draft: InvoiceDraft): InvoiceValues {
 function validate(values: InvoiceValues): Partial<Record<InvoiceKey, string>> {
   const errors: Partial<Record<InvoiceKey, string>> = {}
   if (!PREFIX.test(values.invoicePrefix)) errors.invoicePrefix = PREFIX_MESSAGE
+  if (values.invoiceResolution && !RESOLUTION.test(values.invoiceResolution)) errors.invoiceResolution = RESOLUTION_MESSAGE
   if (!Number.isInteger(values.invoiceRangeFrom) || values.invoiceRangeFrom < 1) errors.invoiceRangeFrom = RANGE_FROM_MESSAGE
   if (
     values.invoiceRangeTo !== null &&

@@ -6,11 +6,14 @@
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
 SET LOCAL search_path = public, extensions;
-SELECT plan(24);
+SELECT plan(32);
 
 SELECT has_column('public', 'payments', 'invoice_seq', 'payments has invoice_seq');
 SELECT has_column('public', 'payments', 'invoice_number', 'payments has invoice_number');
 SELECT has_column('public', 'payments', 'invoice_fiscal', 'payments has invoice_fiscal');
+SELECT has_column('public', 'payments', 'invoice_prefix', 'payments has invoice_prefix');
+SELECT has_index('public', 'payments', 'payments_restaurant_id_invoice_prefix_seq_key',
+  ARRAY['restaurant_id', 'invoice_prefix', 'invoice_seq'], 'numbers are unique per restaurant and prefix');
 SELECT has_trigger('public', 'payments', 'payments_assign_invoice_number', 'payments has the invoice number trigger');
 
 INSERT INTO public.restaurants (id, slug, name) VALUES
@@ -28,10 +31,10 @@ INSERT INTO public.dishes (id, restaurant_id, name, price, active) VALUES
 INSERT INTO public.cash_registers (id, restaurant_id, opening_timestamp, initial_cash, status) VALUES
   ('48400000-0000-0000-0000-0000000000a1', '48000000-0000-0000-0000-0000000000a1', now(), 100000, 'open'),
   ('48400000-0000-0000-0000-0000000000b2', '48000000-0000-0000-0000-0000000000b2', now(), 100000, 'open');
--- Five takeaway orders in A (one Arepa, no tax) and one in B.
+-- Eight takeaway orders in A (one Arepa, no tax) and one in B.
 INSERT INTO public.orders (id, restaurant_id, status, order_type, customer_name, subtotal, tax, tax_percentage, tip, tip_percentage, total)
 SELECT ('48500000-0000-0000-0000-00000000000' || n)::uuid, '48000000-0000-0000-0000-0000000000a1', 'kitchen', 'takeaway', 'Ana', 10000, 0, 0, 0, 0, 10000
-  FROM generate_series(1, 5) n;
+  FROM generate_series(1, 8) n;
 INSERT INTO public.orders (id, restaurant_id, status, order_type, customer_name, subtotal, tax, tax_percentage, tip, tip_percentage, total)
 VALUES ('48500000-0000-0000-0000-0000000000b1', '48000000-0000-0000-0000-0000000000b2', 'kitchen', 'takeaway', 'Bea', 10000, 0, 0, 0, 0, 10000);
 INSERT INTO public.order_items (restaurant_id, order_id, dish_id, name, price, quantity)
@@ -103,6 +106,22 @@ SELECT is((SELECT invoice_fiscal FROM public.payments WHERE order_id = '48500000
 SELECT lives_ok($$ SELECT pg_temp.pay('48500000-0000-0000-0000-000000000004', '48000000-0000-0000-0000-000000000001',
   '48400000-0000-0000-0000-0000000000a1', 10000, '48a00000-0000-0000-0000-000000000005') $$, 'the next payment goes through');
 SELECT is(pg_temp.number_of('48500000-0000-0000-0000-000000000004'), 'FE-005001', 'and is FE-005001');
+
+-- 4b. S7: each prefix has its own sequence. A new prefix starts at its range
+-- start while FE is at 5001; switching back continues FE; POS continues at 3.
+UPDATE public.business_config SET value = 'NV' WHERE restaurant_id = '48000000-0000-0000-0000-0000000000a1' AND key = 'invoice_prefix';
+UPDATE public.business_config SET value = '1' WHERE restaurant_id = '48000000-0000-0000-0000-0000000000a1' AND key = 'invoice_range_from';
+SELECT lives_ok($$ SELECT pg_temp.pay('48500000-0000-0000-0000-000000000005', '48000000-0000-0000-0000-000000000001',
+  '48400000-0000-0000-0000-0000000000a1', 10000, '48a00000-0000-0000-0000-000000000006') $$, 'a payment under a new prefix goes through');
+SELECT is(pg_temp.number_of('48500000-0000-0000-0000-000000000005'), 'NV-000001', 'a new prefix starts at its range start although FE is at 5001');
+UPDATE public.business_config SET value = 'FE' WHERE restaurant_id = '48000000-0000-0000-0000-0000000000a1' AND key = 'invoice_prefix';
+SELECT lives_ok($$ SELECT pg_temp.pay('48500000-0000-0000-0000-000000000006', '48000000-0000-0000-0000-000000000001',
+  '48400000-0000-0000-0000-0000000000a1', 10000, '48a00000-0000-0000-0000-000000000007') $$, 'a payment back under FE goes through');
+SELECT is(pg_temp.number_of('48500000-0000-0000-0000-000000000006'), 'FE-005002', 'switching back to FE continues its sequence');
+UPDATE public.business_config SET value = 'POS' WHERE restaurant_id = '48000000-0000-0000-0000-0000000000a1' AND key = 'invoice_prefix';
+SELECT lives_ok($$ SELECT pg_temp.pay('48500000-0000-0000-0000-000000000007', '48000000-0000-0000-0000-000000000001',
+  '48400000-0000-0000-0000-0000000000a1', 10000, '48a00000-0000-0000-0000-000000000008') $$, 'a payment back under POS goes through');
+SELECT is(pg_temp.number_of('48500000-0000-0000-0000-000000000007'), 'POS-000003', 'POS continues at 3, never reusing a number');
 
 -- 5. Each restaurant counts on its own.
 SELECT lives_ok($$ SELECT pg_temp.pay('48500000-0000-0000-0000-0000000000b1', '48000000-0000-0000-0000-000000000002',

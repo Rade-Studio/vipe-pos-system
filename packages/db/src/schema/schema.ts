@@ -29,7 +29,7 @@ export const businessConfig = pgTable("business_config", {
 	check("business_config_tax_type", sql`((key)::text <> 'tax_type'::text) OR (value = ANY (ARRAY['INC'::text, 'IVA'::text]))`),
 	// 0043: invoice numbering and DIAN data ('' = not set).
 	check("business_config_invoice_prefix", sql`((key)::text <> 'invoice_prefix'::text) OR (value ~ '^[A-Z0-9]{1,10}$'::text)`),
-	check("business_config_invoice_resolution", sql`((key)::text <> 'invoice_resolution'::text) OR (length(value) <= 60)`),
+	check("business_config_invoice_resolution", sql`((key)::text <> 'invoice_resolution'::text) OR ((length(value) <= 60) AND (value ~ '^[[:alnum:] ./-]*$'::text)))`),
 	check("business_config_invoice_range_from", sql`((key)::text <> 'invoice_range_from'::text) OR (value ~ '^[1-9][0-9]{0,11}$'::text)`),
 	check("business_config_invoice_range_to", sql`((key)::text <> 'invoice_range_to'::text) OR (value ~ '^([1-9][0-9]{0,11})?$'::text)`),
 	check("business_config_invoice_valid_from", sql`((key)::text <> 'invoice_valid_from'::text) OR (value ~ '^([0-9]{4}-[0-9]{2}-[0-9]{2})?$'::text)`),
@@ -1091,10 +1091,11 @@ export const payments = pgTable("payments", {
 	/** 0043: invoice consecutive, printed number and fiscal snapshot, set by the payments_assign_invoice_number trigger. */
 	// You can use { mode: "bigint" } if numbers are exceeding js number limitations
 	invoiceSeq: bigint("invoice_seq", { mode: "number" }),
+	invoicePrefix: text("invoice_prefix"),
 	invoiceNumber: text("invoice_number"),
 	invoiceFiscal: jsonb("invoice_fiscal"),
 }, (table) => [
-	uniqueIndex("payments_restaurant_id_invoice_seq_key").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops"), table.invoiceSeq.asc().nullsLast().op("int8_ops")),
+	uniqueIndex("payments_restaurant_id_invoice_prefix_seq_key").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops"), table.invoicePrefix.asc().nullsLast().op("text_ops"), table.invoiceSeq.asc().nullsLast().op("int8_ops")),
 	check("payments_invoice_seq_check", sql`invoice_seq >= 1`),
 	index("idx_payments_order_id").using("btree", table.orderId.asc().nullsLast().op("uuid_ops")),
 	uniqueIndex("payments_order_id_live_key").using("btree", table.orderId.asc().nullsLast().op("uuid_ops")).where(sql`(voided_at IS NULL)`),

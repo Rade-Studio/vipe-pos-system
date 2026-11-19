@@ -605,7 +605,8 @@ export function CashierView({ profile, onChangeProfile, authRole }: CashierViewP
         setInvoiceIsPayment(true)
         setCompletedInvoiceData({
           ...base,
-          invoiceNumber: payment.invoiceNumber ?? base.invoiceNumber,
+          // A paid invoice never says "Se asigna al cobrar": a payment made before numbering keeps the old label.
+          invoiceNumber: payment.invoiceNumber ?? `INV-${attempt.id.substring(0, 8)}`,
           fiscalLines: fiscalLines(payment.invoiceFiscal),
           paymentMethod: legacy.paymentMethod as PrintableInvoice["paymentMethod"],
           cashReceived: legacy.cashReceived ?? undefined,

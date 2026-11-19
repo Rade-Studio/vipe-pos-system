@@ -50,6 +50,9 @@ const cutoffHour = (value: string) => {
 
 /** H-014 / S2 (T12): the invoice prefix, uppercase letters and digits (POS-000123). */
 export const INVOICE_PREFIX = /^[A-Z0-9]{1,10}$/;
+/** The resolution reaches raw ESC/POS output: letters, digits, spaces and - . / only (no control bytes). */
+export const INVOICE_RESOLUTION = /^[\p{L}\p{N} ./-]*$/u;
+export const INVOICE_RESOLUTION_MESSAGE = 'La resolución solo lleva letras, números, espacios y los signos - . /';
 /** Tax regimes printed on the invoice. */
 export const TAX_REGIMES = ['responsable_iva', 'no_responsable_iva', 'regimen_simple'] as const;
 export type TaxRegime = (typeof TAX_REGIMES)[number];
@@ -140,7 +143,7 @@ export const updateConfigSchema = z.strictObject({
   businessDayCutoffHour: z.number().int().min(0).max(6).optional(),
   taxType: z.enum(TAX_TYPES).optional(),
   invoicePrefix: z.string().regex(INVOICE_PREFIX, 'El prefijo lleva de 1 a 10 letras mayúsculas o números, sin espacios ni guiones').optional(),
-  invoiceResolution: z.string().trim().max(60).nullable().optional(),
+  invoiceResolution: z.string().trim().max(60).regex(INVOICE_RESOLUTION, INVOICE_RESOLUTION_MESSAGE).nullable().optional(),
   invoiceRangeFrom: invoiceNumber.optional(),
   invoiceRangeTo: invoiceNumber.nullable().optional(),
   invoiceValidFrom: calendarDate.nullable().optional(),

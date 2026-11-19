@@ -66,7 +66,7 @@ describe('invoice numbering and DIAN data (Testcontainers, vipe_api)', () => {
     await db(`INSERT INTO customer_addresses (id, customer_id, address_line, is_default, restaurant_id) VALUES ($1, $2, 'Calle 1', true, $3)`, [
       ids.address, ids.customer, A,
     ]);
-    for (let n = 1; n <= 12; n += 1) {
+    for (let n = 1; n <= 30; n += 1) {
       await db(`INSERT INTO orders (id, status, subtotal, tax, tax_percentage, total, restaurant_id) VALUES ($1, 'delivered', 10000, 0, 0, 10000, $2)`, [order(n), A]);
       await db(`INSERT INTO order_items (order_id, name, price, quantity, status, restaurant_id) VALUES ($1, 'Arepa', 10000, 1, 'served', $2)`, [order(n), A]);
     }
@@ -103,6 +103,8 @@ describe('invoice numbering and DIAN data (Testcontainers, vipe_api)', () => {
       [{ invoiceRangeFrom: 0 }, 'invoiceRangeFrom'],
       [{ invoiceValidTo: '31/12/2026' }, 'invoiceValidTo'],
       [{ taxRegime: 'simplificado' }, 'taxRegime'],
+      [{ invoiceResolution: '1876\u001b@4000' }, 'invoiceResolution'],
+      [{ invoiceResolution: 'Res\n123' }, 'invoiceResolution'],
     ])('refuses %j with 422 naming the field and stores nothing', async (body, field) => {
       const res = await admin().put('/api/config', body);
       expect(res.status).toBe(422);
@@ -148,6 +150,13 @@ describe('invoice numbering and DIAN data (Testcontainers, vipe_api)', () => {
       const cleared = await admin().put('/api/config', { invoiceResolution: null, taxRegime: null });
       expect(cleared.body).toMatchObject({ invoiceResolution: null, taxRegime: null, invoiceRangeTo: 5000 });
       await admin().put('/api/config', { invoiceResolution: '18764000001234', taxRegime: 'responsable_iva' });
+    });
+
+    it('accepts a resolution with letters, digits, spaces, dash, dot and slash', async () => {
+      const res = await admin().put('/api/config', { invoiceResolution: 'Res. 18764-0001/2026' });
+      expect(res.status).toBe(200);
+      expect(res.body.invoiceResolution).toBe('Res. 18764-0001/2026');
+      await admin().put('/api/config', { invoiceResolution: '18764000001234' });
     });
 
     it('keeps the other keys working as before (taxType)', async () => {
@@ -239,6 +248,44 @@ describe('invoice numbering and DIAN data (Testcontainers, vipe_api)', () => {
       expect((await admin().put('/api/config', { invoicePrefix: 'FE', invoiceRangeFrom: 1000, invoiceRangeTo: 2000, invoiceValidTo: '2099-12-31' })).status).toBe(200);
       const res = await pay(order(11));
       expect(res.body).toMatchObject({ invoiceNumber: 'FE-001000', invoiceWarnings: [] });
+    });
+
+    it('S7: a new prefix starts at its range start while POS is at 5000, and switching back continues POS', async () => {
+      const set = (body: object) => admin().put('/api/config', { invoiceRangeTo: null, invoiceValidTo: '2099-12-31', ...body });
+      expect((await set({ invoicePrefix: 'POS', invoiceRangeFrom: 5000 })).status).toBe(200);
+      expect((await pay(order(12))).body.invoiceNumber).toBe('POS-005000');
+      expect((await set({ invoicePrefix: 'NV', invoiceRangeFrom: 1 })).status).toBe(200);
+      expect((await pay(order(13))).body.invoiceNumber).toBe('NV-000001');
+      expect((await set({ invoicePrefix: 'POS' })).status).toBe(200);
+      expect((await pay(order(14))).body.invoiceNumber).toBe('POS-005001');
+      expect((await set({ invoicePrefix: 'FE', invoiceRangeFrom: 1000 })).status).toBe(200);
+      expect((await pay(order(15))).body.invoiceNumber).toBe('FE-001001');
+    });
+
+    it('S7: warns the range is ending against the current prefix sequence only', async () => {
+      expect((await admin().put('/api/config', { invoicePrefix: 'NV', invoiceRangeFrom: 1, invoiceRangeTo: 100 })).status).toBe(200);
+      const res = await pay(order(16));
+      expect(res.body).toMatchObject({ invoiceNumber: 'NV-000002', invoiceWarnings: [] });
+    });
+
+    it('S7: concurrent payments while the prefix switches never repeat a number and leave no gap per prefix', async () => {
+      const results = await Promise.all([
+        ...[17, 18, 19].map((n) => pay(order(n))),
+        admin().put('/api/config', { invoicePrefix: 'POS', invoiceRangeFrom: 1, invoiceRangeTo: null }),
+        ...[20, 21, 22].map((n) => pay(order(n))),
+      ]);
+      expect(results.map((r) => r.status)).toEqual([200, 200, 200, 200, 200, 200, 200]);
+      const rows = await db<{ invoice_prefix: string; invoice_seq: string; invoice_number: string }>(
+        `SELECT invoice_prefix, invoice_seq::text, invoice_number FROM payments WHERE restaurant_id = $1 AND invoice_prefix IN ('NV', 'POS') ORDER BY invoice_prefix, invoice_seq`,
+        [A],
+      );
+      expect(new Set(rows.map((r) => r.invoice_number)).size).toBe(rows.length);
+      const seqs = (prefix: string) => rows.filter((r) => r.invoice_prefix === prefix).map((r) => Number(r.invoice_seq));
+      const nv = seqs('NV');
+      expect(nv).toEqual(nv.map((_, i) => i + 1));
+      const pos = seqs('POS').filter((n) => n >= 5000);
+      expect(pos).toEqual(pos.map((_, i) => 5000 + i));
+      expect(nv.length + pos.length).toBe(2 + 2 + 6);
     });
   });
 });

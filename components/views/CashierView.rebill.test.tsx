@@ -338,6 +338,37 @@ describe("payment saved but its reply lost (H-065 / F3)", () => {
     listRegisterPayments.mockResolvedValue([])
   })
 
+  it("a payment without a stored number (before numbering) never shows Se asigna al cobrar on its invoice (H-014)", async () => {
+    renderCashier()
+    await openPaymentFor("Mesa 1")
+    await addCashLine()
+    payOrder.mockImplementationOnce(async () => { throw new PaymentServiceError({ kind: "unknown", message: "Failed to fetch" }) })
+    confirmPayment()
+    await waitFor(() => expect(registerButton()).toBeEnabled())
+    vi.mocked(toast.success).mockClear()
+    getById.mockImplementation(async (id: string) => dbRow({ id, status: "paid" }))
+    listPaymentMethods.mockResolvedValue([
+      { id: "pm-cash", code: "cash", name: "Efectivo", kind: "cash" as const, isActive: true, sortOrder: 1 },
+    ] as never)
+    listRegisterPayments.mockResolvedValue([
+      {
+        id: "pay-9", orderId: "o-1", cashRegisterId: "reg-1", cashierProfileId: "cashier-1", amountDue: 47_600, tipAmount: 0,
+        totalCharged: 47_600, changeGiven: 0, idempotencyKey: "k", createdAt: "2026-10-07T12:30:00.000Z",
+        tenders: [{ id: "t-1", paymentId: "pay-9", lineNo: 1, paymentMethodId: "pm-cash", methodCode: "cash", methodKind: "cash", amount: 47_600, cashReceived: 47_600 }],
+        invoiceNumber: null,
+        invoiceFiscal: null,
+      },
+    ] as never)
+    emit(dbRow({ status: "paid" }))
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Pago registrado. La orden quedó pagada; se muestra su factura."))
+    const text = document.body.textContent ?? ""
+    expect(text).not.toContain("Se asigna al cobrar")
+    expect(text).toContain("INV-o-1")
+    getById.mockImplementation(async (id: string) => dbRow({ id }))
+    listRegisterPayments.mockResolvedValue([])
+  })
+
   it("if the paid order cannot be read, shows Pago registrado only, with no invoice (G3)", async () => {
     renderCashier()
     await openPaymentFor("Mesa 1")
