@@ -69,14 +69,15 @@ const DAY_EMPTY = 'No hay turnos de caja en este día: no hay nada que cerrar.';
 const Z_KEYS = ['businessDay', 'emittedAt', 'emittedBy', 'number', 'snapshot'];
 const SNAPSHOT_KEYS = ['date', 'discounts', 'orders', 'previous', 'registers', 'status', 'taxes', 'tipsByMethod', 'tipsByWaiter', 'totals', 'voids'];
 const DAY_REGISTER_KEYS = [
-  'cashDifference', 'closeNote', 'closedAt', 'closedBy', 'countedCash', 'deposits', 'expected', 'id', 'initialCash', 'methods',
+  'cashDifference', 'closeNote', 'closedAt', 'closedBy', 'countedCash', 'delivery', 'deposits', 'expected', 'id', 'initialCash', 'methods',
   'openedAt', 'openedBy', 'salesNet', 'status', 'tickets', 'tips', 'tipsPayout', 'validatedAt', 'validatedBy', 'withdrawals',
 ];
 const TOTALS_KEYS = [
-  'avgTicket', 'counted', 'deliveries', 'deposits', 'difference', 'expected', 'methods', 'salesNet', 'tables', 'takeaway', 'tickets',
+  'avgTicket', 'counted', 'deliveries', 'delivery', 'deposits', 'difference', 'expected', 'methods', 'salesNet', 'tables', 'takeaway', 'tickets',
   'tips', 'withdrawals',
 ];
-const BUCKET_KEYS = ['avgTicket', 'difference', 'end', 'methods', 'salesNet', 'start', 'tickets', 'tips', 'voids'];
+const BUCKET_KEYS = ['avgTicket', 'deliveryFees', 'difference', 'end', 'methods', 'salesNet', 'start', 'tickets', 'tips', 'voids'];
+const NO_DELIVERY = { fees: 0, ordersCount: 0, foodBilled: 0, cashCollected: 0, couriers: [] };
 const ADMIN_A = { id: fixtures.adminA.profileId, name: 'Admin A' };
 const CASHIER_A = { id: c.cashierProfile, name: 'Cashier A' };
 const CASHIER_2 = { id: c.cashier2Profile, name: 'Cajera Tarde' };
@@ -190,6 +191,8 @@ describe('cash endpoints (Testcontainers, vipe_api)', () => {
       });
       expect(byCode(reg2.methods)).toEqual({ cash: [25000, 1], transfer: [0, 0], nequi: [44000, 1], bancolombia: [0, 0] });
       expect(reg3).toMatchObject({ id: c.reg3, openedAt: '2026-11-11T06:30:00.000Z', salesNet: 0, tickets: 0, expected: 0 });
+      // Delivery orders without an order_deliveries row (older data) add nothing to the delivery block.
+      expect(reg2.delivery).toEqual({ ...NO_DELIVERY, foodBilled: 65000 });
     });
 
     it('totals the day: sales, tickets, average, tables, deliveries, tips, methods, cash and the count', async () => {
@@ -310,7 +313,7 @@ describe('cash endpoints (Testcontainers, vipe_api)', () => {
       const day10 = res.body.buckets.find((b: { start: string }) => b.start === '2026-11-10');
       expect(day10).toMatchObject({
         start: '2026-11-10', end: '2026-11-10', salesNet: 145000, tickets: 4, avgTicket: 36250, tips: 12000, difference: -2000,
-        voids: { count: 2, amount: 35000 },
+        voids: { count: 2, amount: 35000 }, deliveryFees: 0,
       });
       expect(byCode(day10.methods)).toEqual({ cash: [80000, 2], transfer: [33000, 1], nequi: [44000, 1], bancolombia: [0, 0] });
       expect(res.body.buckets.find((b: { start: string }) => b.start === '2026-11-03')).toMatchObject({ salesNet: 10000, tickets: 1 });
@@ -661,6 +664,107 @@ describe('cash endpoints (Testcontainers, vipe_api)', () => {
       expect(byCode(z.snapshot.totals.methods).cash).toEqual([0, 1]);
       expect(z.snapshot.discounts).toBe(20000);
       expect(z.snapshot.taxes).toMatchObject({ base: 0, tax: 0 });
+    });
+  });
+
+  describe('domicilios en el cierre (H-080, S3)', () => {
+    // 2026-06-10: one closed register (initial 10000) with a table order (20000 cash), a cash-on-delivery order of
+    // Carlos (30000 + 5000 fee, cash), a prepaid order of Carlos (10000 + 3000 fee, Nequi) and a cash-on-delivery
+    // order without courier (8000 + 2000 fee, cash). 2026-06-11 has a cash-on-delivery order of Beto (4000 + 1000 fee).
+    const reg = '97000000-0000-0000-0000-000000000701';
+    const reg2 = '97000000-0000-0000-0000-000000000702';
+    const carlos = '97000000-0000-0000-0000-000000000711';
+    const beto = '97000000-0000-0000-0000-000000000712';
+    const customer = '97000000-0000-0000-0000-000000000713';
+    const CARLOS = { courierId: carlos, name: 'Carlos', ordersCount: 2, cashCollected: 35000, feesOwed: 8000 };
+    const NOBODY = { courierId: null, name: null, ordersCount: 1, cashCollected: 10000, feesOwed: 2000 };
+    const BETO = { courierId: beto, name: 'Beto', ordersCount: 1, cashCollected: 5000, feesOwed: 1000 };
+    beforeAll(async () => {
+      const A = fixtures.restaurantA;
+      await db(
+        `INSERT INTO cash_registers (id, opening_timestamp, closing_timestamp, initial_cash, final_cash, status, restaurant_id, opened_by, closed_by,
+                                     counted_cash, cash_difference) VALUES
+           ($1, '2026-06-10 10:00-05', '2026-06-10 20:00-05', 10000, 75000, 'closed', $3, $4, $4, 75000, 0),
+           ($2, '2026-06-11 10:00-05', '2026-06-11 20:00-05', 0, 5000, 'closed', $3, $4, $4, 5000, 0)`,
+        [reg, reg2, A, c.cashierProfile],
+      );
+      await db(`INSERT INTO couriers (id, restaurant_id, name) VALUES ($1, $3, 'Carlos'), ($2, $3, 'Beto')`, [carlos, beto, A]);
+      await db(`INSERT INTO customers (id, phone, name, restaurant_id) VALUES ($1, '3101234567', 'Ana', $2)`, [customer, A]);
+      const orders: [string, string, string, number, number, string, string | null, string | null][] = [
+        ['97000000-0000-0000-0000-000000000721', reg, 'dine_in', 20000, 0, 'cash', null, null],
+        ['97000000-0000-0000-0000-000000000722', reg, 'delivery', 30000, 5000, 'cash', 'cash_on_delivery', carlos],
+        ['97000000-0000-0000-0000-000000000723', reg, 'delivery', 10000, 3000, 'nequi', 'prepaid', carlos],
+        ['97000000-0000-0000-0000-000000000724', reg, 'delivery', 8000, 2000, 'cash', 'cash_on_delivery', null],
+        ['97000000-0000-0000-0000-000000000725', reg2, 'delivery', 4000, 1000, 'cash', 'cash_on_delivery', beto],
+      ];
+      for (const [id, register, type, food, fee, method, mode, courier] of orders) {
+        await db(
+          `INSERT INTO orders (id, status, subtotal, tax, tax_percentage, total, restaurant_id, order_type)
+             VALUES ($1, 'paid', $2::bigint, 0, 0, $2::bigint + $3::bigint, $4, $5)`,
+          [id, food, fee, A, type],
+        );
+        if (mode) {
+          await db(
+            `INSERT INTO order_deliveries (order_id, restaurant_id, customer_id, customer_name, customer_phone, address_line, delivery_fee,
+                                           payment_mode, courier_id, delivery_status)
+               VALUES ($1, $2, $3, 'Ana', '3101234567', 'Calle 1', $4, $5, $6, 'delivered')`,
+            [id, A, customer, fee, mode, courier],
+          );
+        }
+        await db(
+          `WITH pay AS (
+             INSERT INTO payments (id, order_id, cash_register_id, cashier_profile_id, amount_due, tip_amount, total_charged, change_given,
+                                   idempotency_key, created_at, restaurant_id)
+             VALUES (gen_random_uuid(), $1, $2, $3, $4, 0, $4, 0, gen_random_uuid(), $6::timestamptz, $5) RETURNING id)
+           INSERT INTO payment_tenders (restaurant_id, payment_id, line_no, payment_method_id, method_code, method_kind, amount, cash_received)
+             SELECT $5, pay.id, 1, m.id, m.code, m.kind, $4, CASE WHEN m.kind = 'cash' THEN $4::bigint END
+               FROM pay JOIN payment_methods m ON m.restaurant_id = $5 AND m.code = $7`,
+          [id, register, c.cashierProfile, food + fee, A, register === reg ? '2026-06-10 12:00-05' : '2026-06-11 12:00-05', method],
+        );
+      }
+    });
+
+    it('shows each register with its delivery fees apart and, per courier, the cash they bring and the fees owed', async () => {
+      const { registers } = (await adminA().get('/api/cash/days/2026-06-10')).body;
+      expect(registers).toHaveLength(1);
+      expect(registers[0]).toMatchObject({ salesNet: 78000, tickets: 4, expected: 75000 });
+      expect(byCode(registers[0].methods)).toMatchObject({ cash: [65000, 3], nequi: [13000, 1] });
+      expect(registers[0].delivery).toEqual({ fees: 10000, ordersCount: 3, foodBilled: 68000, cashCollected: 45000, couriers: [CARLOS, NOBODY] });
+    });
+
+    it('adds the delivery block up in the day totals, keeping the old totals', async () => {
+      const { totals } = (await adminA().get('/api/cash/days/2026-06-10')).body;
+      expect(totals).toMatchObject({ salesNet: 78000, tickets: 4, expected: 75000, deliveries: { count: 3, amount: 58000 } });
+      expect(totals.delivery).toEqual({ fees: 10000, ordersCount: 3, foodBilled: 68000, cashCollected: 45000, couriers: [CARLOS, NOBODY] });
+    });
+
+    it('freezes the delivery block in the Z snapshot', async () => {
+      const z = (await adminA().post('/api/cash/days/2026-06-10/z')).body;
+      expect(z.snapshot.totals.delivery).toEqual({ fees: 10000, ordersCount: 3, foodBilled: 68000, cashCollected: 45000, couriers: [CARLOS, NOBODY] });
+      expect(z.snapshot.registers[0].delivery.fees).toBe(10000);
+    });
+
+    it('serves a Z stored before the delivery block without one', async () => {
+      const stored = (await adminA().post('/api/cash/days/2026-06-11/z')).body;
+      await db(
+        `UPDATE z_reports SET snapshot = jsonb_set(snapshot #- '{totals,delivery}', '{registers}',
+                  (SELECT jsonb_agg(r - 'delivery') FROM jsonb_array_elements(snapshot->'registers') r))
+          WHERE restaurant_id = $1 AND number = $2`,
+        [fixtures.restaurantA, stored.number],
+      );
+      const res = await adminA().get(`/api/cash/z/${stored.number}`);
+      expect(res.status).toBe(200);
+      expect(res.body.snapshot.totals).not.toHaveProperty('delivery');
+      expect(res.body.snapshot.registers[0]).not.toHaveProperty('delivery');
+      expect(res.body.snapshot.totals).toMatchObject({ salesNet: 5000, tickets: 1 });
+    });
+
+    it('reports the delivery fees per bucket and per courier over the period', async () => {
+      const res = await adminA().get('/api/cash/report?from=2026-06-10&to=2026-06-11&group=day');
+      expect(res.status).toBe(200);
+      expect(res.body.buckets.map((b: { deliveryFees: number }) => b.deliveryFees)).toEqual([10000, 1000]);
+      expect(res.body.totals).toMatchObject({ salesNet: 83000, deliveryFees: 11000 });
+      expect(res.body.byCourier).toEqual([BETO, CARLOS, NOBODY]);
     });
   });
 });

@@ -3,7 +3,13 @@ import { sql, type SQL } from '@vipe/db';
 import { toIso } from '../common/validation';
 import { UnitOfWork } from '../db/unit-of-work';
 import type { PaymentMethodKind } from '../payments/payments.dto';
-import type { CashTransactionReason, CashTransactionType, RegisterSummary } from '../registers/registers.dto';
+import type {
+  CashTransactionReason,
+  CashTransactionType,
+  RegisterCourierSummary,
+  RegisterDeliverySummary,
+  RegisterSummary,
+} from '../registers/registers.dto';
 import { profileRef } from '../registers/registers.mappers';
 import { RegistersService } from '../registers/registers.service';
 import { TAX_TYPE_NAMES, type TaxType } from '../settings/business-config';
@@ -78,6 +84,7 @@ interface DayFigures {
   methods: Map<string, Map<string, { total: number; count: number }>>;
   difference: Map<string, number>;
   voids: Map<string, { count: number; amount: number }>;
+  deliveryFees: Map<string, number>;
 }
 
 interface Catalog {
@@ -147,6 +154,7 @@ export class CashService {
         countedCash: numOrNull(r.counted_cash),
         cashDifference: numOrNull(r.cash_difference),
         closeNote: text(r.close_note),
+        delivery: summary.delivery,
       });
     }
     const [extra] = await this.rows(sql`
@@ -180,6 +188,7 @@ export class CashService {
         expected: sumOf(registers, 'expected'),
         counted: registers.reduce((sum, reg) => sum + (reg.countedCash ?? 0), 0),
         difference: registers.reduce((sum, reg) => sum + (reg.cashDifference ?? 0), 0),
+        delivery: mergeDelivery(registers.map((reg) => reg.delivery!)),
       },
       tipsByWaiter: await this.tipsByWaiter(scope),
       voids: { count: voids.length, amount: voids.reduce((sum, item) => sum + item.amount, 0), items: voids.map(({ day: _day, ...item }) => item) },
@@ -340,7 +349,28 @@ export class CashService {
         (row): CashCashierDifference => ({ profileId: String(row.profile_id), name: String(row.name), shifts: num(row.shifts), difference: num(row.difference) }),
       ),
       tipsByWaiter: await this.tipsByWaiter(scope),
+      byCourier: await this.byCourier(scope),
     };
+  }
+
+  /** H-080: per courier over the scope's live delivery payments (same rules as register_summary.delivery). */
+  private async byCourier(scope: SQL): Promise<RegisterCourierSummary[]> {
+    const rows = await this.rows(sql`
+      WITH ${scope}
+      SELECT od.courier_id, c.name, count(*) AS orders_count, sum(od.delivery_fee) AS fees_owed,
+             sum(CASE WHEN od.payment_mode = 'cash_on_delivery' THEN ${cashTenders} ELSE 0 END) AS cash_collected
+        FROM pays p
+        JOIN public.order_deliveries od ON od.order_id = p.order_id
+        LEFT JOIN public.couriers c ON c.id = od.courier_id
+       GROUP BY od.courier_id, c.name
+       ORDER BY od.courier_id IS NULL, c.name, od.courier_id`);
+    return rows.map((row) => ({
+      courierId: text(row.courier_id),
+      name: text(row.name),
+      ordersCount: num(row.orders_count),
+      cashCollected: num(row.cash_collected),
+      feesOwed: num(row.fees_owed),
+    }));
   }
 
   /**
@@ -513,7 +543,13 @@ export class CashService {
     const differences = await this.rows(sql`
       WITH ${scope}
       SELECT day, coalesce(sum(cash_difference), 0) AS difference FROM regs GROUP BY day`);
-    const figures: DayFigures = { sales: new Map(), methods: new Map(), difference: new Map(), voids: new Map() };
+    const fees = await this.rows(sql`
+      WITH ${scope}
+      SELECT p.day, sum(od.delivery_fee) AS fees FROM pays p JOIN public.order_deliveries od ON od.order_id = p.order_id GROUP BY p.day`);
+    const figures: DayFigures = { sales: new Map(), methods: new Map(), difference: new Map(), voids: new Map(), deliveryFees: new Map() };
+    for (const row of fees) {
+      figures.deliveryFees.set(String(row.day), num(row.fees));
+    }
     for (const row of sales) {
       figures.sales.set(String(row.day), { salesNet: num(row.sales), tickets: num(row.tickets), tips: num(row.tips) });
     }
@@ -623,6 +659,28 @@ const sumOf = <K extends 'salesNet' | 'tickets' | 'tips' | 'deposits' | 'withdra
 const summaryMethods = (summary: RegisterSummary): CashMethodTotal[] =>
   summary.methods.map((m) => ({ id: m.paymentMethodId, code: m.code, name: m.name, kind: m.kind, total: m.total, count: m.tendersCount }));
 
+/** H-080: the registers' delivery blocks added up; couriers merged by id, by name, without courier last. */
+function mergeDelivery(blocks: RegisterDeliverySummary[]): RegisterDeliverySummary {
+  const couriers = new Map<string, RegisterCourierSummary>();
+  for (const courier of blocks.flatMap((block) => block.couriers)) {
+    const key = courier.courierId ?? '';
+    const current = couriers.get(key);
+    couriers.set(key, current
+      ? { ...current, ordersCount: current.ordersCount + courier.ordersCount, cashCollected: current.cashCollected + courier.cashCollected,
+          feesOwed: current.feesOwed + courier.feesOwed }
+      : { ...courier });
+  }
+  const sum = (key: 'fees' | 'ordersCount' | 'foodBilled' | 'cashCollected') => blocks.reduce((total, block) => total + block[key], 0);
+  return {
+    fees: sum('fees'),
+    ordersCount: sum('ordersCount'),
+    foodBilled: sum('foodBilled'),
+    cashCollected: sum('cashCollected'),
+    couriers: [...couriers.values()].sort((a, b) =>
+      a.courierId === null ? 1 : b.courierId === null ? -1 : (a.name ?? '').localeCompare(b.name ?? '', 'es') || a.courierId.localeCompare(b.courierId)),
+  };
+}
+
 /** Catalog order, totals and counts added over the lists. */
 function mergeMethods(catalog: Catalog[], lists: CashMethodTotal[][]): CashMethodTotal[] {
   return catalog.map((method) => {
@@ -636,6 +694,7 @@ function bucketOf(catalog: Catalog[], figures: DayFigures, start: string, end: s
   let tickets = 0;
   let tips = 0;
   let difference = 0;
+  let deliveryFees = 0;
   const voids = { count: 0, amount: 0 };
   const methods = new Map<string, { total: number; count: number }>();
   for (let day = start; day <= end; day = addDays(day, 1)) {
@@ -644,6 +703,7 @@ function bucketOf(catalog: Catalog[], figures: DayFigures, start: string, end: s
     tickets += sales?.tickets ?? 0;
     tips += sales?.tips ?? 0;
     difference += figures.difference.get(day) ?? 0;
+    deliveryFees += figures.deliveryFees.get(day) ?? 0;
     const dayVoids = figures.voids.get(day);
     voids.count += dayVoids?.count ?? 0;
     voids.amount += dayVoids?.amount ?? 0;
@@ -662,5 +722,6 @@ function bucketOf(catalog: Catalog[], figures: DayFigures, start: string, end: s
     methods: catalog.map((method) => ({ ...method, ...(methods.get(method.id) ?? { total: 0, count: 0 }) })),
     difference,
     voids,
+    deliveryFees,
   };
 }

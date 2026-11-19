@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
-import { ShiftCloseSlip } from "./ShiftCloseSlip"
+import { ShiftCloseSlip, shiftCloseLines } from "./ShiftCloseSlip"
 import type { RegisterSummary } from "@/lib/payments/register-summary"
 
 /** caja-cierres S4: "Cierre de turno" with the arqueo and signature lines. */
@@ -91,5 +91,38 @@ describe("ShiftCloseSlip", () => {
     expect(slip).toHaveTextContent(/Base\s+\$ 1\.376\.111/)
     expect(slip).toHaveTextContent(/INC \(8 %\)\s+\$ 110\.089/)
     expect(slip).not.toHaveTextContent("IVA")
+  })
+  it("prints the deliveries apart and, per courier, the cash they bring and the fees to pay (H-080)", () => {
+    const delivery = {
+      fees: 10000, ordersCount: 3, foodBilled: 1594900, cashCollected: 45000,
+      couriers: [
+        { courierId: "c-1", name: "Carlos", ordersCount: 2, cashCollected: 35000, feesOwed: 8000 },
+        { courierId: null, name: null, ordersCount: 1, cashCollected: 10000, feesOwed: 2000 },
+      ],
+    }
+    const props = { ...base, summary: { ...base.summary, delivery }, closedAt: null, closedByName: null, countedCash: 0, difference: 0, note: null, denominations: null }
+    const text = shiftCloseLines(props).map((line) => line.text)
+    const at = (pattern: RegExp, from = 0) => text.findIndex((line, i) => i >= from && pattern.test(line))
+    expect(text[at(/^Domicilios$/)]).toBe("Domicilios")
+    expect(text[at(/^Ventas de comida/)]).toMatch(/\$ 1\.594\.900$/)
+    expect(text[at(/^Tarifas de domicilio \(3\)/)]).toMatch(/\$ 10\.000$/)
+    const carlos = at(/^Carlos \(2\)$/)
+    expect(carlos).toBeGreaterThan(-1)
+    expect(text[at(/^ {3}Efectivo que trae/, carlos)]).toMatch(/\$ 35\.000$/)
+    expect(text[at(/^ {3}Tarifas a pagar/, carlos)]).toMatch(/\$ 8\.000$/)
+    const nobody = at(/^Sin repartidor \(1\)$/)
+    expect(text[at(/^ {3}Efectivo que trae/, nobody)]).toMatch(/\$ 10\.000$/)
+    // The cash and sales lines stay as they were.
+    expect(text[at(/^Ventas netas turno/)]).toMatch(/\$ 1\.486\.200$/)
+    expect(text[at(/^Esperado/)]).toMatch(/\$ 715\.000$/)
+    for (const line of text) expect(line.length).toBeLessThanOrEqual(48)
+  })
+
+  it("prints no delivery block for a summary without deliveries", () => {
+    const props = { ...base, closedAt: null, closedByName: null, countedCash: 0, difference: 0, note: null, denominations: null }
+    const text = shiftCloseLines(props).map((line) => line.text)
+    expect(text.some((line) => /Ventas de comida|Efectivo que trae/.test(line))).toBe(false)
+    const zero = shiftCloseLines({ ...props, summary: { ...props.summary, delivery: { fees: 0, ordersCount: 0, foodBilled: 0, cashCollected: 0, couriers: [] } } })
+    expect(zero.map((line) => line.text)).toEqual(text)
   })
 })

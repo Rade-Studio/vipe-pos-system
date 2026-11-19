@@ -82,6 +82,7 @@ export function toRegister(row: RegisterRow): CashRegister {
 export function toRegisterSummary(row: Json): RegisterSummary {
   const legacy = (row.legacy ?? {}) as Json;
   const byMethod = (legacy.by_method ?? {}) as Record<string, unknown>;
+  const delivery = (row.delivery ?? {}) as Json;
   return {
     registersCount: req(row, 'registers_count'),
     initialCash: req(row, 'initial_cash'),
@@ -111,6 +112,19 @@ export function toRegisterSummary(row: Json): RegisterSummary {
       tips: req(legacy, 'tips'),
       change: req(legacy, 'change'),
       byMethod: Object.fromEntries(Object.keys(byMethod).map((method) => [method, req(byMethod, method)])),
+    },
+    delivery: {
+      fees: req(delivery, 'fees'),
+      ordersCount: req(delivery, 'orders_count'),
+      foodBilled: req(delivery, 'food_billed'),
+      cashCollected: req(delivery, 'cash_collected'),
+      couriers: ((delivery.couriers as Json[] | null) ?? []).map((courier) => ({
+        courierId: text(courier.courier_id),
+        name: text(courier.name),
+        ordersCount: req(courier, 'orders_count'),
+        cashCollected: req(courier, 'cash_collected'),
+        feesOwed: req(courier, 'fees_owed'),
+      })),
     },
   };
 }

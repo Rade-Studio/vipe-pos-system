@@ -2,6 +2,7 @@ import type { CashMovement } from "@/lib/api/registers"
 import { CASH_MOVEMENT_REASONS } from "@/lib/api/registers"
 import type { RegisterSummary } from "@/lib/payments/register-summary"
 import { BILL_VALUES, denominationSubtotal, differenceStatus } from "@/lib/payments/denominations"
+import { deliverySlipLines } from "./delivery-lines"
 import { cashSalesOf, methodLines, taxLines } from "./XReportSlip"
 import type { SlipTax } from "./tax-label"
 import {
@@ -94,6 +95,7 @@ export function shiftCloseLines(props: ShiftCloseSlipProps): SlipLine[] {
     ...taxLines(summary.totalSales, props.tax, width),
     row("Tiquetes", String(summary.paymentsCount)),
     row("Propinas (aparte)", pesos(summary.totalTips)),
+    ...deliverySlipLines(summary, width),
     ruleLine(width),
     { text: "Cuadre de efectivo", bold: true },
     row("Fondo de caja", pesos(summary.initialCash)),

@@ -5102,6 +5102,27 @@ export interface components {
                 [key: string]: number;
             };
         };
+        RegisterCourierSummary: {
+            /** Format: uuid */
+            courierId: string | null;
+            name: string | null;
+            ordersCount: number;
+            /** @description Cash tenders of their cash-on-delivery orders: the cash they bring back. */
+            cashCollected: number;
+            /** @description Delivery fees of their paid orders, whatever the payment mode: owed to them. */
+            feesOwed: number;
+        };
+        RegisterDeliverySummary: {
+            /** @description Delivery fees of the live payments. */
+            fees: number;
+            ordersCount: number;
+            /** @description totalBilled minus the delivery fees. */
+            foodBilled: number;
+            /** @description Cash tenders of cash-on-delivery orders. */
+            cashCollected: number;
+            /** @description By courier name; deliveries without a courier last. */
+            couriers: components["schemas"]["RegisterCourierSummary"][];
+        };
         RegisterSummary: {
             registersCount: number;
             initialCash: number;
@@ -5117,6 +5138,7 @@ export interface components {
             tipsPayout: number;
             expectedCashAfterTips: number;
             legacy: components["schemas"]["RegisterLegacySummary"];
+            delivery: components["schemas"]["RegisterDeliverySummary"];
         };
         OpenRegisterRequest: {
             /** @description Whole pesos (H-061). */
@@ -5248,6 +5270,8 @@ export interface components {
             countedCash: number | null;
             cashDifference: number | null;
             closeNote: string | null;
+            /** @description Delivery fees apart from the food sales and per courier (H-080). Always on a day; absent from Z snapshots stored before it. */
+            delivery?: components["schemas"]["RegisterDeliverySummary"];
         };
         CashDeliveries: {
             count: number;
@@ -5279,6 +5303,8 @@ export interface components {
             counted: number;
             /** @description Sum of cash_difference. */
             difference: number;
+            /** @description Delivery fees apart from the food sales and per courier, added over the registers (H-080). Always on a day; absent from Z snapshots stored before it. */
+            delivery?: components["schemas"]["RegisterDeliverySummary"];
         };
         CashWaiterTips: {
             /**
@@ -5432,6 +5458,8 @@ export interface components {
             /** @description Sum of cash_difference of the registers. */
             difference: number;
             voids: components["schemas"]["CashVoidTotals"];
+            /** @description Delivery fees of the live payments (included in salesNet) (H-080). Always sent; optional for older clients. */
+            deliveryFees?: number;
         };
         CashCashierDifference: {
             /** Format: uuid */
@@ -5455,6 +5483,8 @@ export interface components {
             /** @description By name. */
             byCashier: components["schemas"]["CashCashierDifference"][];
             tipsByWaiter: components["schemas"]["CashWaiterTips"][];
+            /** @description Per courier over the range, by name; deliveries without a courier last (H-080). Always sent; optional for older clients. */
+            byCourier?: components["schemas"]["RegisterCourierSummary"][];
         };
         CashTaxes: {
             /**

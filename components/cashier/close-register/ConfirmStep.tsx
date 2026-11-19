@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react"
 import type { RegisterSummary } from "@/lib/payments/register-summary"
-import { summaryRows } from "@/lib/payments/register-summary"
+import { deliveryOf, summaryRows } from "@/lib/payments/register-summary"
 import { differenceStatus } from "@/lib/payments/denominations"
 import { Chip, Money } from "@/components/cashier/cashier-ui"
 import { differenceText, pesos } from "@/components/printing/slip-format"
@@ -28,6 +28,7 @@ export function ConfirmStep({
   leftOpen: number
 }) {
   const difference = counted === null ? 0 : counted - summary.expectedCashAfterTips
+  const delivery = deliveryOf(summary)
   return (
     <div className="space-y-3 text-sm">
       <p className="text-muted-fg">Esto queda guardado y sale en la tirilla de cierre de turno.</p>
@@ -37,11 +38,36 @@ export function ConfirmStep({
           <Row key={method.paymentMethodId} label={method.name}><Money>{pesos(method.total)}</Money></Row>
         ))}
         <Row label="Ventas" strong><Money>{pesos(summary.totalSales)}</Money></Row>
+        {delivery && (
+          <>
+            <Row label="Ventas de comida"><Money>{pesos(delivery.foodBilled)}</Money></Row>
+            <Row label={`Domicilios (${delivery.ordersCount})`}><Money>{pesos(delivery.fees)}</Money></Row>
+          </>
+        )}
         <Row label="Propinas (aparte)"><Money>{pesos(summary.totalTips)}</Money></Row>
         <Row label="Entradas"><Money>{pesos(summary.cashDeposits)}</Money></Row>
         <Row label="Salidas"><Money>{pesos(-summary.cashWithdrawals)}</Money></Row>
         <Row label="Propinas a pagar en efectivo"><Money>{pesos(-summary.tipsPayout)}</Money></Row>
       </div>
+      {delivery && (
+        <div className="space-y-1 rounded-md border border-line p-3">
+          <p className="font-semibold" id="close-couriers">Domicilios por repartidor</p>
+          <ul aria-labelledby="close-couriers" className="space-y-2">
+            {delivery.couriers.map((courier) => (
+              <li key={courier.courierId ?? "none"} className="space-y-0.5">
+                <p>
+                  <span className="font-medium">{courier.name ?? "Sin repartidor"}</span>
+                  <span className="ml-2 text-muted-fg">
+                    {courier.ordersCount} {courier.ordersCount === 1 ? "domicilio" : "domicilios"}
+                  </span>
+                </p>
+                <Row label="Efectivo que trae"><Money>{pesos(courier.cashCollected)}</Money></Row>
+                <Row label="Tarifas que se le deben"><Money>{pesos(courier.feesOwed)}</Money></Row>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <div className="space-y-1 rounded-md border border-line p-3">
         <Row label="Esperado" strong><Money>{pesos(summary.expectedCashAfterTips)}</Money></Row>
         <Row label="Contado" strong><Money>{counted === null ? "Sin contar" : pesos(counted)}</Money></Row>

@@ -26,7 +26,7 @@ import {
   zNumberLabel,
 } from "@/lib/admin/cash"
 import { cn } from "@/lib/utils"
-import { MethodTotals, WaiterTips } from "./CashDayBoard"
+import { DeliveryTotals, MethodTotals, WaiterTips } from "./CashDayBoard"
 import { Region, Segmented } from "./Segmented"
 import { usePrintZ } from "./use-print-z"
 
@@ -305,6 +305,13 @@ export function CashPeriodView({ today, onOpenDay }: CashPeriodViewProps) {
               </Panel>
             </Region>
             <WaiterTips tips={report.tipsByWaiter} total={report.totals.tips} />
+            {report.byCourier && (
+              <DeliveryTotals
+                fees={report.totals.deliveryFees ?? 0}
+                foodSales={report.totals.salesNet - (report.totals.deliveryFees ?? 0)}
+                couriers={report.byCourier}
+              />
+            )}
             <Panel title="Anulaciones">
               <p className="text-sm">
                 <span className="font-medium">{report.totals.voids.count}</span> anulaciones por{" "}

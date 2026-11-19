@@ -194,6 +194,42 @@ describe('parseRegisterSummary', () => {
   })
 })
 
+describe('parseRegisterSummary delivery block (H-080)', () => {
+  const delivery = {
+    fees: 8000,
+    orders_count: 2,
+    food_billed: 60000,
+    cash_collected: 35000,
+    couriers: [
+      { courier_id: 'c-1', name: 'Carlos', orders_count: 1, cash_collected: 35000, fees_owed: 5000 },
+      { courier_id: null, name: null, orders_count: 1, cash_collected: 0, fees_owed: 3000 },
+    ],
+  }
+
+  it('maps the delivery block to camelCase', () => {
+    expect(parseRegisterSummary({ ...SAMPLE_RAW, delivery }).delivery).toEqual({
+      fees: 8000,
+      ordersCount: 2,
+      foodBilled: 60000,
+      cashCollected: 35000,
+      couriers: [
+        { courierId: 'c-1', name: 'Carlos', ordersCount: 1, cashCollected: 35000, feesOwed: 5000 },
+        { courierId: null, name: null, ordersCount: 1, cashCollected: 0, feesOwed: 3000 },
+      ],
+    })
+  })
+
+  it('leaves delivery undefined for a payload without it, keeping the other fields', () => {
+    const parsed = parseRegisterSummary(SAMPLE_RAW)
+    expect(parsed.delivery).toBeUndefined()
+    expect(parsed.expectedCash).toBe(SAMPLE_RAW.expected_cash)
+  })
+
+  it('throws on a non-integer delivery amount', () => {
+    expect(() => parseRegisterSummary({ ...SAMPLE_RAW, delivery: { ...delivery, fees: 1.5 } })).toThrow(/fees/)
+  })
+})
+
 describe('validateRegisterSummaryShape', () => {
   it('returns true for a valid payload', () => {
     expect(validateRegisterSummaryShape(SAMPLE_RAW)).toBe(true)

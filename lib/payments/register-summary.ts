@@ -62,6 +62,24 @@ interface WireRegisterSummary {
   tips_payout: number
   expected_cash_after_tips: number
   legacy: WireLegacySection
+  /** 0044 (H-080). */
+  delivery?: WireDeliverySection
+}
+
+interface WireCourierSection {
+  courier_id: string | null
+  name: string | null
+  orders_count: number
+  cash_collected: number
+  fees_owed: number
+}
+
+interface WireDeliverySection {
+  fees: number
+  orders_count: number
+  food_billed: number
+  cash_collected: number
+  couriers: WireCourierSection[]
 }
 
 // -----------------------------------------------------------
@@ -87,6 +105,27 @@ export interface RegisterLegacySummary {
   byMethod: Record<string, number>
 }
 
+/** One courier of the shift (H-080); courierId and name are null for deliveries without a courier. */
+export interface RegisterCourierSummary {
+  courierId: string | null
+  name: string | null
+  ordersCount: number
+  /** Cash tenders of their cash-on-delivery orders: the cash they bring back. */
+  cashCollected: number
+  /** Delivery fees of their paid orders, whatever the payment mode. */
+  feesOwed: number
+}
+
+/** Delivery fees apart from the food sales (H-080); already inside totalBilled, the methods and expectedCash. */
+export interface RegisterDeliverySummary {
+  fees: number
+  ordersCount: number
+  /** totalBilled minus the delivery fees. */
+  foodBilled: number
+  cashCollected: number
+  couriers: RegisterCourierSummary[]
+}
+
 export interface RegisterSummary {
   registersCount: number
   initialCash: number
@@ -102,6 +141,8 @@ export interface RegisterSummary {
   tipsPayout: number
   expectedCashAfterTips: number
   legacy: RegisterLegacySummary
+  /** Always sent by the server since 0044; optional so older payloads and fixtures still parse. */
+  delivery?: RegisterDeliverySummary
 }
 
 // -----------------------------------------------------------
@@ -192,6 +233,39 @@ function parseLegacySection(raw: unknown): RegisterLegacySummary {
   return { paymentsCount, total, tips, change, byMethod }
 }
 
+function parseDeliverySection(raw: unknown): RegisterDeliverySummary {
+  const obj = requireObject(raw, 'delivery')
+  const field = (o: Record<string, unknown>, name: string, label: string): number => {
+    if (!(name in o)) fail(`${label}.${name} is required`)
+    const v = o[name]
+    if (!isIntegerMoney(v, `${label}.${name}`)) return 0 as never
+    return v
+  }
+  if (!Array.isArray(obj.couriers)) fail('delivery.couriers must be an array')
+  const nullableText = (v: unknown, label: string): string | null => {
+    if (v === null || v === undefined) return null
+    if (typeof v !== 'string') fail(`${label} must be a string or null`)
+    return v
+  }
+  return {
+    fees: field(obj, 'fees', 'delivery'),
+    ordersCount: field(obj, 'orders_count', 'delivery'),
+    foodBilled: field(obj, 'food_billed', 'delivery'),
+    cashCollected: field(obj, 'cash_collected', 'delivery'),
+    couriers: (obj.couriers as unknown[]).map((rawCourier, i) => {
+      const label = `delivery.couriers[${i}]`
+      const c = requireObject(rawCourier, label)
+      return {
+        courierId: nullableText(c.courier_id, `${label}.courier_id`),
+        name: nullableText(c.name, `${label}.name`),
+        ordersCount: field(c, 'orders_count', label),
+        cashCollected: field(c, 'cash_collected', label),
+        feesOwed: field(c, 'fees_owed', label),
+      }
+    }),
+  }
+}
+
 /**
  * Parse the server's snake_case jsonb payload into the camelCase client
  * shape. Throws on missing fields, wrong types, or non-integer money
@@ -220,7 +294,13 @@ export function parseRegisterSummary(raw: unknown): RegisterSummary {
     tipsPayout: requireIntegerMoneyField(obj, 'tips_payout'),
     expectedCashAfterTips: requireIntegerMoneyField(obj, 'expected_cash_after_tips'),
     legacy: parseLegacySection(obj.legacy),
+    ...(obj.delivery === undefined ? {} : { delivery: parseDeliverySection(obj.delivery) }),
   }
+}
+
+/** H-080: the delivery block to show, or null for a shift without deliveries (or a payload without the block). */
+export function deliveryOf(summary: { delivery?: RegisterDeliverySummary }): RegisterDeliverySummary | null {
+  return summary.delivery && summary.delivery.ordersCount > 0 ? summary.delivery : null
 }
 
 /**

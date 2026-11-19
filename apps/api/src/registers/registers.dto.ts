@@ -178,6 +178,25 @@ export class RegisterLegacySummary {
   byMethod!: Record<string, number>;
 }
 
+/** One courier of the shift (H-080); courierId and name are null for deliveries without a courier. */
+export class RegisterCourierSummary {
+  @ApiProperty({ type: String, format: 'uuid', nullable: true }) courierId!: string | null;
+  @ApiProperty({ type: String, nullable: true }) name!: string | null;
+  @ApiProperty() ordersCount!: number;
+  @ApiProperty({ description: 'Cash tenders of their cash-on-delivery orders: the cash they bring back.' }) cashCollected!: number;
+  @ApiProperty({ description: 'Delivery fees of their paid orders, whatever the payment mode: owed to them.' }) feesOwed!: number;
+}
+
+/** Delivery fees apart from the food sales (H-080). Already included in totalBilled, the methods and expectedCash. */
+export class RegisterDeliverySummary {
+  @ApiProperty({ description: 'Delivery fees of the live payments.' }) fees!: number;
+  @ApiProperty() ordersCount!: number;
+  @ApiProperty({ description: 'totalBilled minus the delivery fees.' }) foodBilled!: number;
+  @ApiProperty({ description: 'Cash tenders of cash-on-delivery orders.' }) cashCollected!: number;
+  @ApiProperty({ type: [RegisterCourierSummary], description: 'By courier name; deliveries without a courier last.' })
+  couriers!: RegisterCourierSummary[];
+}
+
 /** register_summary in camelCase; every number is computed by the database. */
 export class RegisterSummary {
   @ApiProperty() registersCount!: number;
@@ -194,6 +213,7 @@ export class RegisterSummary {
   @ApiProperty() tipsPayout!: number;
   @ApiProperty() expectedCashAfterTips!: number;
   @ApiProperty({ type: RegisterLegacySummary }) legacy!: RegisterLegacySummary;
+  @ApiProperty({ type: RegisterDeliverySummary }) delivery!: RegisterDeliverySummary;
 }
 
 export class CloseRegisterResult extends RegisterCount {

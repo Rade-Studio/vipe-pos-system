@@ -186,4 +186,25 @@ describe("ZReportSlip", () => {
     const lines = screen.getByRole("document", { name: "Informe Z N.º 000214" }).querySelectorAll("[data-line]")
     for (const line of lines) expect((line.textContent ?? "").length).toBeLessThanOrEqual(32)
   })
+  it("prints the delivery block of the day and per courier when the Z carries it (H-080)", () => {
+    const delivery = {
+      fees: 45000, ordersCount: 9, foodBilled: 6176100, cashCollected: 300000,
+      couriers: [{ courierId: "c-1", name: "Carlos", ordersCount: 9, cashCollected: 300000, feesOwed: 45000 }],
+    }
+    const z = { ...Z, snapshot: { ...Z.snapshot, totals: { ...Z.snapshot.totals, delivery } } }
+    const text = zReportLines({ business, z, printedAt }).map((line) => line.text)
+    const at = (pattern: RegExp, from = 0) => text.findIndex((line, i) => i >= from && pattern.test(line))
+    expect(text[at(/^Ventas de comida/)]).toMatch(/\$ 6\.176\.100$/)
+    expect(text[at(/^Tarifas de domicilio \(9\)/)]).toMatch(/\$ 45\.000$/)
+    const carlos = at(/^Carlos \(9\)$/)
+    expect(text[at(/^ {3}Efectivo que trae/, carlos)]).toMatch(/\$ 300\.000$/)
+    expect(text[at(/^ {3}Tarifas a pagar/, carlos)]).toMatch(/\$ 45\.000$/)
+    expect(text[at(/^VENTAS NETAS/)]).toMatch(/\$ 6\.221\.100$/)
+  })
+
+  it("reprints a Z stored before the delivery block without one", () => {
+    const text = zReportLines({ business, z: Z, printedAt }).map((line) => line.text)
+    expect(text.some((line) => /Ventas de comida|Efectivo que trae|Tarifas a pagar/.test(line))).toBe(false)
+    expect(text.some((line) => /^Domicilios \(9\)/.test(line))).toBe(true)
+  })
 })
