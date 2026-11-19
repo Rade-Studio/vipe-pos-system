@@ -692,6 +692,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/orders/{id}/items/kitchen-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["OrdersController_setKitchenStatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/orders/{id}/cancel": {
         parameters: {
             query?: never;
@@ -3991,6 +4007,11 @@ export interface components {
             /** @enum {string} */
             status: "kitchen" | "served";
             /**
+             * @description H-057: cooking step while status is kitchen (pendiente, en preparación, listo); meaningless once served. Lines written before it read pending.
+             * @enum {string}
+             */
+            kitchenStatus: "pending" | "preparing" | "ready";
+            /**
              * Format: uuid
              * @description Station the line was routed to when sent (F6); null without stations.
              */
@@ -4537,6 +4558,11 @@ export interface components {
         };
         ServeOrderItemsRequest: {
             itemIds: string[];
+        };
+        KitchenStatusRequest: {
+            itemIds: string[];
+            /** @enum {string} */
+            kitchenStatus: "pending" | "preparing" | "ready";
         };
         CancelOrderRequest: {
             /**
@@ -10226,6 +10252,52 @@ export interface operations {
                 content?: never;
             };
             /** @description Order is closed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid input, unknown fields, unknown dish, table, waiter or item. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    OrdersController_setKitchenStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KitchenStatusRequest"];
+            };
+        };
+        responses: {
+            /** @description H-057: the lines take the cooking step (pending, preparing, ready); order, table and line status are unchanged. The order row is touched so its realtime UPDATE carries the lines; no notice is sent. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Order"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Order is closed, or Item is not in kitchen (a served or cancelled line). */
             409: {
                 headers: {
                     [name: string]: unknown;

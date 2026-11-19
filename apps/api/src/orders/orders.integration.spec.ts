@@ -37,7 +37,7 @@ const ORDER_KEYS = [
   'subtotal', 'tableId', 'tax', 'taxPercentage', 'tip', 'tipPercentage', 'total', 'totalDiscounts', 'updatedAt', 'waiterId',
 ];
 const ITEM_KEYS = [
-  'addedAt', 'comboId', 'comments', 'createdAt', 'discounts', 'dishId', 'id', 'modifiers', 'name', 'orderId', 'price', 'promotionId', 'promotionName', 'quantity',
+  'addedAt', 'comboId', 'comments', 'createdAt', 'discounts', 'dishId', 'id', 'kitchenStatus', 'modifiers', 'name', 'orderId', 'price', 'promotionId', 'promotionName', 'quantity',
   'stationId', 'stationSource', 'status', 'updatedAt',
 ];
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;

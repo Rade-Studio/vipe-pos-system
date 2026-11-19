@@ -22,6 +22,7 @@ import {
   type CompletedOrder,
   type createOrderSchema,
   DELETE_DEFAULT_REASON,
+  type KitchenStatus,
   type Order,
   ORDER_LIST_LIMIT,
   type OrderStatus,
@@ -327,6 +328,33 @@ export class OrdersService {
     if (!pending && order.status === 'kitchen') {
       await this.deliver(id, order.table_id);
     }
+    return this.get(id);
+  }
+
+  /**
+   * POST /orders/:id/items/kitchen-status (H-057, S4): lines still in the
+   * kitchen take a cooking step. Nothing else changes (order, table, line
+   * status); the order row's updated_at is touched so the waiter's existing
+   * orders realtime UPDATE carries the lines. No notice of any kind.
+   */
+  async setKitchenStatus(id: string, itemIds: string[], kitchenStatus: KitchenStatus): Promise<Order> {
+    const order = await this.lockOrder(id);
+    if (order.status === 'paid' || order.status === 'cancelled') {
+      throw new ConflictException('Order is closed');
+    }
+    const unique = [...new Set(itemIds)];
+    const found = await this.rows<{ id: string; status: string | null }>(sql`
+      SELECT id, status FROM public.order_items WHERE order_id = ${id} AND id = ANY(${sql.param(unique)}::uuid[])`);
+    if (found.length !== unique.length) {
+      throw new UnprocessableEntityException('Unknown item');
+    }
+    if (found.some((item) => item.status !== 'kitchen')) {
+      throw new ConflictException('Item is not in kitchen');
+    }
+    await this.uow.db.execute(sql`
+      UPDATE public.order_items SET kitchen_status = ${kitchenStatus}, updated_at = now()
+       WHERE order_id = ${id} AND id = ANY(${sql.param(unique)}::uuid[]) AND kitchen_status <> ${kitchenStatus}`);
+    await this.uow.db.execute(sql`UPDATE public.orders SET updated_at = now() WHERE id = ${id}`);
     return this.get(id);
   }
 

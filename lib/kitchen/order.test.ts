@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from "vitest"
 import type { Order, OrderItem } from "@/types"
-import { isServedItem, kitchenOrderOf, kitchenOrdersOf, pendingItems } from "./order"
+import { isServedItem, kitchenOrderOf, kitchenOrdersOf, lineStage, LINE_STAGE_LABEL, nextKitchenStatus, pendingItems } from "./order"
 
 function item(id: string, status: "kitchen" | "served", addedAt: string): OrderItem {
   return {
@@ -105,5 +105,31 @@ describe("F3: cancelled orders and voided lines leave the board", () => {
     const zero = { ...item("i-0", "kitchen", "2026-10-07T11:00:00.000Z"), quantity: 0 }
     const mapped = kitchenOrderOf(order({}, [zero, item("i-1", "kitchen", "2026-10-07T11:01:00.000Z")]))
     expect(mapped?.items.map((i) => i.id)).toEqual(["i-1"])
+  })
+})
+
+describe("lineStage (H-057)", () => {
+  const at = "2026-11-18T12:00:00.000Z"
+  it("pending -> preparing -> ready while in the kitchen; served wins over any step", () => {
+    expect(lineStage(item("a", "kitchen", at))).toBe("pending")
+    expect(lineStage({ ...item("a", "kitchen", at), kitchenStatus: "pending" })).toBe("pending")
+    expect(lineStage({ ...item("a", "kitchen", at), kitchenStatus: "preparing" })).toBe("preparing")
+    expect(lineStage({ ...item("a", "kitchen", at), kitchenStatus: "ready" })).toBe("ready")
+    expect(lineStage({ ...item("a", "served", at), kitchenStatus: "ready" })).toBe("served")
+    // An older API or realtime row without the field: a served line is still served.
+    expect(lineStage(item("a", "served", at))).toBe("served")
+  })
+
+  it("labels in Spanish and the kitchen's next step (none after ready)", () => {
+    expect(LINE_STAGE_LABEL).toEqual({ pending: "Pendiente", preparing: "En preparación", ready: "Listo", served: "Servido" })
+    expect(nextKitchenStatus("pending")).toBe("preparing")
+    expect(nextKitchenStatus("preparing")).toBe("ready")
+    expect(nextKitchenStatus("ready")).toBeNull()
+  })
+
+  it("a line keeps being pending work for the board until served, whatever its step", () => {
+    const ready = { ...item("a", "kitchen", at), kitchenStatus: "ready" as const }
+    expect(isServedItem(ready)).toBe(false)
+    expect(pendingItems(order({}, [ready, item("b", "served", at)])).map((line) => line.id)).toEqual(["a"])
   })
 })

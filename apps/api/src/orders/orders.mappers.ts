@@ -4,6 +4,8 @@ import { toLegacyTransaction, toPayment } from '../payments/payments.mappers';
 import {
   type CancelledOrder,
   type CompletedOrder,
+  KITCHEN_STATUSES,
+  type KitchenStatus,
   LEGACY_CANCELLATION_LABEL,
   type Order,
   type OrderDiscount,
@@ -53,6 +55,7 @@ export const toOrderItem = (row: Json): OrderItem => ({
   quantity: num(row.quantity),
   comments: text(row.comments),
   status: String(row.status ?? 'kitchen'),
+  kitchenStatus: (KITCHEN_STATUSES as readonly unknown[]).includes(row.kitchen_status) ? (row.kitchen_status as KitchenStatus) : 'pending',
   stationId: text(row.station_id),
   stationSource: (text(row.station_source) as OrderItem['stationSource']) ?? null,
   addedAt: time(row.added_at),

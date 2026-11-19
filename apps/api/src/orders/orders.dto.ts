@@ -11,6 +11,9 @@ import { LegacyPaymentTransaction, Payment } from '../payments/payments.dto';
 export const ORDER_STATUSES = ['active', 'kitchen', 'delivered', 'cancelled', 'paid'] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 export const ORDER_ITEM_STATUSES = ['kitchen', 'served'] as const;
+/** H-057 (S4): the cooking step of a line still in the kitchen; served stays `status`. */
+export const KITCHEN_STATUSES = ['pending', 'preparing', 'ready'] as const;
+export type KitchenStatus = (typeof KITCHEN_STATUSES)[number];
 export const ORDER_TYPES = ['dine_in', 'takeaway', 'delivery'] as const;
 export type OrderType = (typeof ORDER_TYPES)[number];
 /** The order types POST /orders creates; delivery goes through the delivery module (create_delivery_order). */
@@ -190,6 +193,12 @@ export const completedOrdersQuerySchema = z.strictObject({ date: dateQuery });
 
 export const serveOrderItemsSchema = z.strictObject({ itemIds: z.array(z.guid()).min(1).max(MAX_ITEMS) });
 
+/** POST /orders/:id/items/kitchen-status (H-057): lines still in the kitchen take one cooking step. */
+export const kitchenStatusSchema = z.strictObject({
+  itemIds: z.array(z.guid()).min(1).max(MAX_ITEMS),
+  kitchenStatus: z.enum(KITCHEN_STATUSES),
+});
+
 /** POST /orders/:id/cancel and the body of DELETE /orders/:id. */
 export const cancelOrderSchema = z.strictObject(voidReasonFields).refine(requireOtherText, OTHER_TEXT_ISSUE);
 
@@ -301,6 +310,11 @@ export class OrderItem {
   @ApiProperty() quantity!: number;
   @ApiProperty({ type: String, nullable: true }) comments!: string | null;
   @ApiProperty({ enum: ORDER_ITEM_STATUSES }) status!: string;
+  @ApiProperty({
+    enum: KITCHEN_STATUSES,
+    description: 'H-057: cooking step while status is kitchen (pendiente, en preparación, listo); meaningless once served. Lines written before it read pending.',
+  })
+  kitchenStatus!: KitchenStatus;
   @ApiProperty({ type: String, format: 'uuid', nullable: true, description: 'Station the line was routed to when sent (F6); null without stations.' })
   stationId!: string | null;
   @ApiProperty({
@@ -519,6 +533,11 @@ export class UpdateOrderStatusRequest {
 
 export class ServeOrderItemsRequest {
   @ApiProperty({ type: [String], minItems: 1 }) itemIds!: string[];
+}
+
+export class KitchenStatusRequest {
+  @ApiProperty({ type: [String], minItems: 1 }) itemIds!: string[];
+  @ApiProperty({ enum: KITCHEN_STATUSES }) kitchenStatus!: KitchenStatus;
 }
 
 export class StockShortage {

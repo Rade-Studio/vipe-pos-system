@@ -32,6 +32,7 @@ import {
   orderDtoFromWire,
   orderItemsFromCart,
   serveItems,
+  setKitchenStatus,
   toOrder,
   updateDetails,
   updateStatus,
@@ -559,5 +560,35 @@ describe("getVoidPreview (S1)", () => {
     const preview = await getVoidPreview({ channel: "delivery", orderId: "o-2", voids: [{ orderItemId: "i-9", quantity: 2 }] })
     expect(api.POST.mock.calls.at(-1)![1].body.channel).toBe("delivery")
     expect(preview).toEqual({ grossSubtotal: 50000, totalDiscounts: 0, netSubtotal: 50000, lines: [] })
+  })
+})
+
+describe("kitchen status of a line (H-057)", () => {
+  const line = (overrides: Partial<OrderDto["items"][number]>) => dto({ items: [{ ...dto().items[0], ...overrides }] })
+
+  it("toOrder carries the step; a line from an API without it has none (read as pending)", () => {
+    expect(toOrder(line({ kitchenStatus: "preparing" })).items[0]).toMatchObject({ status: "kitchen", kitchenStatus: "preparing" })
+    expect(toOrder(line({ kitchenStatus: "ready" })).items[0].kitchenStatus).toBe("ready")
+    expect(toOrder(dto()).items[0].kitchenStatus).toBeUndefined()
+    expect(toOrder(dto()).items[0].status).toBe("kitchen")
+  })
+
+  it("a realtime row carries kitchen_status; an unknown or absent value is dropped", () => {
+    const wire = (kitchen_status?: unknown) =>
+      orderDtoFromWire({ id: "o-1", status: "kitchen", order_items: [{ id: "i-1", name: "X", status: "kitchen", kitchen_status }] })?.items[0]
+    expect(wire("ready")?.kitchenStatus).toBe("ready")
+    expect(wire("preparing")?.kitchenStatus).toBe("preparing")
+    expect(wire("served")?.kitchenStatus).toBeUndefined()
+    expect(wire()?.kitchenStatus).toBeUndefined()
+    expect(wire()?.status).toBe("kitchen")
+  })
+
+  it("setKitchenStatus posts the lines and the step", async () => {
+    api.POST.mockResolvedValueOnce({ data: dto() })
+    await setKitchenStatus("o-1", ["i-1"], "ready")
+    expect(api.POST).toHaveBeenLastCalledWith("/api/orders/{id}/items/kitchen-status", {
+      params: { path: { id: "o-1" } },
+      body: { itemIds: ["i-1"], kitchenStatus: "ready" },
+    })
   })
 })

@@ -2,9 +2,9 @@
 
 import { useState } from "react"
 import { AlertCircle, ArrowRight, Bike, Check, ShoppingBag, UtensilsCrossed } from "lucide-react"
-import type { Order, OrderItemModifier } from "@/types"
+import type { KitchenStatus, Order, OrderItemModifier } from "@/types"
 import { cn } from "@/lib/utils"
-import { isServedItem, pendingItems } from "@/lib/kitchen/order"
+import { LINE_STAGE_LABEL, lineStage, nextKitchenStatus, pendingItems, type LineStage } from "@/lib/kitchen/order"
 import { modifierLabel } from "@/lib/modifiers/rules"
 import {
   formatElapsed,
@@ -31,6 +31,11 @@ export interface KitchenTicketProps {
   thresholds: KitchenThresholds
   onServeItem: (itemId: string) => Promise<void> | void
   onServeAll: () => void
+  /**
+   * H-057 (S4): sets the cooking step of the row's lines. Without it the row
+   * shows only its ✓, as before. No notice goes to the waiter.
+   */
+  onSetKitchenStatus?: (itemIds: string[], kitchenStatus: KitchenStatus) => Promise<void> | void
 }
 
 const HEAD_TONE: Record<TicketTone, string> = {
@@ -60,6 +65,7 @@ interface ItemGroup {
   quantity: number
   ids: string[]
   served: boolean
+  stage: LineStage
 }
 
 // Identical lines (same name, options, comment, send and state) render as one row;
@@ -70,10 +76,11 @@ function groupItems(order: Order): ItemGroup[] {
   const groups = new Map<string, ItemGroup>()
   const sendOf = sendIndexOf(order)
   for (const item of order.items) {
-    const served = isServedItem(item)
+    const stage = lineStage(item)
+    const served = stage === "served"
     // F7: the sorted option ids, so two burgers with different options never merge.
     const options = (item.modifiers ?? []).map((modifier) => modifier.optionId).sort().join(",")
-    const key = `${item.name}|${options}|${item.comments || ""}|${sendOf.get(item.id) ?? "?"}|${served}`
+    const key = `${item.name}|${options}|${item.comments || ""}|${sendOf.get(item.id) ?? "?"}|${stage}`
     const group = groups.get(key) ?? {
       key,
       name: item.name,
@@ -82,6 +89,7 @@ function groupItems(order: Order): ItemGroup[] {
       quantity: 0,
       ids: [],
       served,
+      stage,
     }
     group.quantity += item.quantity
     group.ids.push(item.id)
@@ -100,6 +108,7 @@ export function KitchenTicket({
   thresholds,
   onServeItem,
   onServeAll,
+  onSetKitchenStatus,
 }: KitchenTicketProps) {
   const [busy, setBusy] = useState(false)
   const delivery = order.orderType === "delivery"
@@ -121,6 +130,16 @@ export function KitchenTicket({
     setBusy(true)
     try {
       await onServeItem(itemId)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const setStep = async (itemIds: string[], kitchenStatus: KitchenStatus) => {
+    if (!onSetKitchenStatus) return
+    setBusy(true)
+    try {
+      await onSetKitchenStatus(itemIds, kitchenStatus)
     } finally {
       setBusy(false)
     }
@@ -249,6 +268,8 @@ export function KitchenTicket({
                   Entregado
                 </span>
               ) : (
+              <span className="flex flex-none items-center gap-2">
+                {onSetKitchenStatus && <StepControl group={group} busy={busy} onStep={setStep} />}
               <button
                 type="button"
                 aria-label={`Entregar ${group.quantity} ${group.name}`}
@@ -258,6 +279,7 @@ export function KitchenTicket({
               >
                 <Check className="h-6 w-6" strokeWidth={2.6} aria-hidden="true" />
               </button>
+              </span>
               )}
             </li>
           )
@@ -280,5 +302,46 @@ export function KitchenTicket({
         </button>
       </div>
     </article>
+  )
+}
+
+const STEP_CHIP: Record<"preparing" | "ready", string> = {
+  preparing: "border-status-kitchen-line bg-status-kitchen-bg text-status-kitchen-fg",
+  ready: "border-status-ok-line bg-status-ok-bg text-status-ok-fg",
+}
+
+/**
+ * H-057 (S4): the row's step. Pending offers "Preparar", preparing shows its
+ * chip and offers "Listo", ready shows "Listo". Large touch targets (52 px).
+ */
+function StepControl({
+  group,
+  busy,
+  onStep,
+}: {
+  group: ItemGroup
+  busy: boolean
+  onStep: (itemIds: string[], kitchenStatus: KitchenStatus) => void
+}) {
+  if (group.stage === "served") return null
+  const next = nextKitchenStatus(group.stage)
+  const current = group.stage === "pending" ? null : group.stage
+  return (
+    <>
+      {current && (
+        <span className={cn(chip, "h-8 text-[13px]", STEP_CHIP[current])}>{LINE_STAGE_LABEL[current]}</span>
+      )}
+      {next && (
+        <button
+          type="button"
+          aria-label={`${next === "preparing" ? "Marcar en preparación" : "Marcar listo"} ${group.quantity} ${group.name}`}
+          disabled={busy}
+          onClick={() => onStep(group.ids, next)}
+          className="inline-flex h-[52px] min-w-[52px] flex-none items-center justify-center whitespace-nowrap rounded-full border-[1.5px] border-line-strong bg-surface-2 px-4 text-[16px] font-semibold text-fg hover:brightness-110 focus-visible:outline-dashed focus-visible:outline-[3px] focus-visible:outline-offset-[3px] focus-visible:outline-focus disabled:opacity-50"
+        >
+          {next === "preparing" ? "Preparar" : "Listo"}
+        </button>
+      )}
+    </>
   )
 }

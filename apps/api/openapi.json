@@ -2568,6 +2568,60 @@
         ]
       }
     },
+    "/api/orders/{id}/items/kitchen-status": {
+      "post": {
+        "operationId": "OrdersController_setKitchenStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KitchenStatusRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "H-057: the lines take the cooking step (pending, preparing, ready); order, table and line status are unchanged. The order row is touched so its realtime UPDATE carries the lines; no notice is sent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Order"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": "Order is closed, or Item is not in kitchen (a served or cancelled line)."
+          },
+          "422": {
+            "description": "Invalid input, unknown fields, unknown dish, table, waiter or item."
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "orders"
+        ]
+      }
+    },
     "/api/orders/{id}/cancel": {
       "post": {
         "operationId": "OrdersController_cancel",
@@ -13176,6 +13230,15 @@
               "served"
             ]
           },
+          "kitchenStatus": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "preparing",
+              "ready"
+            ],
+            "description": "H-057: cooking step while status is kitchen (pendiente, en preparación, listo); meaningless once served. Lines written before it read pending."
+          },
           "stationId": {
             "type": "string",
             "format": "uuid",
@@ -13248,6 +13311,7 @@
           "quantity",
           "comments",
           "status",
+          "kitchenStatus",
           "stationId",
           "stationSource",
           "addedAt",
@@ -14802,6 +14866,30 @@
         },
         "required": [
           "itemIds"
+        ]
+      },
+      "KitchenStatusRequest": {
+        "type": "object",
+        "properties": {
+          "itemIds": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "kitchenStatus": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "preparing",
+              "ready"
+            ]
+          }
+        },
+        "required": [
+          "itemIds",
+          "kitchenStatus"
         ]
       },
       "CancelOrderRequest": {
