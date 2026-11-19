@@ -212,6 +212,12 @@ export function renderInvoice(params: {
       amount: number
       cashReceived: number | null
     }>
+    /**
+     * H-014 / S2: the DIAN lines (regime, resolution, validity, range) built
+     * from the payment's fiscal snapshot (`lib/payments/invoice-fiscal`);
+     * printed centered before the thanks, non-empty strings only.
+     */
+    fiscalLines?: readonly unknown[]
     /** Total change across every cash line. New payload field. */
     change?: number
     /** Delivery block: prints customer / address / fee instead of MESA / MESERO. */
@@ -393,6 +399,9 @@ export function renderInvoice(params: {
 
   // Footer
   if (totalDiscounts > 0) lines.push({ text: `HOY AHORRASTE $${formatCurrency(totalDiscounts)}`, bold: true, align: 'center' })
+  for (const text of invoice.fiscalLines ?? []) {
+    if (typeof text === 'string' && text.length > 0) lines.push({ text, align: 'center' })
+  }
   for (const text of ['¡GRACIAS POR SU COMPRA!', 'VUELVA PRONTO']) {
     lines.push({ text, align: 'center' })
   }

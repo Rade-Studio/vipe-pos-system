@@ -11,6 +11,7 @@ import { PercentField } from "./PercentField"
 import { SettingsPage } from "./SettingsPage"
 import { exampleBill } from "./settings-draft"
 import { useSettingsDraft } from "./use-settings-draft"
+import { InvoiceSettingsSection, useInvoiceSettings } from "./InvoiceSettings"
 
 const KEYS = ["taxPercentage", "tipPercentage", "priceSuggestion"] as const
 const SAMPLE_SUBTOTAL = 100_000
@@ -63,16 +64,25 @@ export function TaxSettings() {
   const { toast } = useToast()
   const { draft, update, dirty, save, discard, saving, isLoading } = useSettingsDraft(KEYS)
   const taxType = useTaxTypeSetting()
+  const invoice = useInvoiceSettings()
   const [savingType, setSavingType] = useState(false)
   const bill = exampleBill(SAMPLE_SUBTOTAL, draft.taxPercentage, draft.tipPercentage)
   const disabled = isLoading || saving || savingType
 
   const saveAll = async () => {
-    if (taxType.dirty) {
-      setSavingType(true)
-      const ok = await taxType.save()
-      setSavingType(false)
-      if (ok && !dirty) toast({ title: "Configuración guardada", description: "Los cambios se han guardado correctamente." })
+    // H-014 / S2: invalid invoice data stops the whole save, so nothing is half saved.
+    if (invoice.dirty && Object.keys(invoice.errors).length > 0) {
+      await invoice.save()
+      return
+    }
+    const ownToast = !dirty
+    let ok = true
+    if (taxType.dirty || invoice.dirty) setSavingType(true)
+    if (taxType.dirty) ok = (await taxType.save()) && ok
+    if (invoice.dirty) ok = (await invoice.save()) && ok
+    setSavingType(false)
+    if ((taxType.dirty || invoice.dirty) && ok && ownToast) {
+      toast({ title: "Configuración guardada", description: "Los cambios se han guardado correctamente." })
     }
     if (dirty) await save()
   }
@@ -169,13 +179,15 @@ export function TaxSettings() {
           />
         </SettingsRow>
       </SettingsSection>
+      <InvoiceSettingsSection state={invoice} disabled={disabled} />
       <SaveBar
-        dirty={dirty || taxType.dirty}
+        dirty={dirty || taxType.dirty || invoice.dirty}
         saving={saving || savingType}
         onSave={saveAll}
         onDiscard={() => {
           discard()
           taxType.discard()
+          invoice.discard()
         }}
       />
     </SettingsPage>

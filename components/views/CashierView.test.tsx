@@ -1571,6 +1571,15 @@ describe("Para llevar (S8)", () => {
     expect(invoice).not.toHaveTextContent("N/A")
   })
 
+  it("an open order's bill has no invoice number or DIAN data yet: the payment assigns them (H-014 / S2)", async () => {
+    await openTakeaway()
+    fireEvent.click(screen.getByRole("button", { name: "Reimprimir" }))
+    const invoice = await screen.findByRole("dialog")
+    expect(invoice).toHaveTextContent("Se asigna al cobrar")
+    expect(invoice).not.toHaveTextContent(/INV-\d/)
+    expect(invoice).not.toHaveTextContent(/DIAN|RÉGIMEN/)
+  })
+
   it("reprints a takeaway order with its order type and customer on the invoice (S8)", async () => {
     const { sendFactura } = await import("@/lib/api/print")
     vi.mocked(sendFactura).mockClear()

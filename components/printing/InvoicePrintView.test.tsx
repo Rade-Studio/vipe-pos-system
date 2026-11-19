@@ -233,3 +233,38 @@ describe("InvoicePrintView totals layout (S10)", () => {
     expect(within(totals).getByText("Descuentos:").parentElement!.textContent).toBe(`Descuentos:-${formatCurrency(6000)}`)
   })
 })
+
+describe("InvoicePrintView DIAN data (H-014 / S2)", () => {
+  const FISCAL = ["RESPONSABLE DE IVA", "RES. DIAN No. 18764000001234", "DEL 01/01/2026 AL 31/12/2027", "NUMERACIÓN POS-1 AL POS-5000"]
+  const numbered = { ...invoice, invoiceNumber: "POS-000123", fiscalLines: FISCAL } as PrintableInvoice
+  const hiddenTicket = () => document.querySelector(".ticket") as HTMLElement
+
+  it("shows the stored number and the configured DIAN lines on screen and on the ticket, not a fixed text", () => {
+    render(<InvoicePrintView invoice={numbered} open onOpenChange={() => {}} />)
+    const dialog = screen.getByRole("dialog")
+
+    expect(within(dialog).getAllByText("POS-000123").length).toBeGreaterThan(0)
+    for (const line of FISCAL) expect(within(dialog).getAllByText(line)).toHaveLength(2)
+    expect(within(dialog).queryByText("RÉGIMEN SIMPLIFICADO")).toBeNull()
+    expect(within(dialog).queryByText(/18764000001$/)).toBeNull()
+    expect(hiddenTicket().textContent).toContain("FACTURA: POS-000123")
+    for (const line of FISCAL) expect(hiddenTicket().textContent).toContain(line)
+  })
+
+  it("sends the DIAN lines to the printer with the invoice", () => {
+    render(<InvoicePrintView invoice={numbered} open onOpenChange={() => {}} />)
+    fireEvent.click(screen.getAllByRole("button", { name: /Imprimir/ })[0])
+
+    const [number, sent] = env.sendFactura.mock.calls[0]
+    expect(number).toBe("POS-000123")
+    expect(sent.fiscalLines).toEqual(FISCAL)
+  })
+
+  it("prints no DIAN text for an invoice without them (not configured, or paid before numbering)", () => {
+    render(<InvoicePrintView invoice={invoice} open onOpenChange={() => {}} />)
+    const dialog = screen.getByRole("dialog")
+
+    expect(within(dialog).queryByText(/DIAN|RÉGIMEN|NUMERACIÓN/)).toBeNull()
+    expect(within(dialog).getByText("¡Gracias por su compra!")).toBeTruthy()
+  })
+})

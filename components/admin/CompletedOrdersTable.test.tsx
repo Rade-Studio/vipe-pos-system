@@ -206,3 +206,50 @@ describe("CompletedOrdersTable — one read per date, shared with every revisit"
     expect(button.querySelector("svg.lucide-printer")).toBeNull()
   })
 })
+describe("CompletedOrdersTable — reprint with the stored invoice number (H-014 / S2)", () => {
+  const ledgerPayment = {
+    id: "pay-1",
+    orderId: "11111111-aaaa-4444-8888-000000000001",
+    cashRegisterId: "r-1",
+    cashierProfileId: null,
+    amountDue: 11,
+    tipAmount: 0,
+    totalCharged: 11,
+    changeGiven: 0,
+    idempotencyKey: "k-1",
+    createdAt: "2026-01-15T17:00:00.000Z",
+    tenders: [],
+    invoiceNumber: "POS-000042",
+    invoiceFiscal: {
+      prefix: "POS",
+      resolution: "18764000001234",
+      rangeFrom: 1,
+      rangeTo: 5000,
+      validFrom: null,
+      validTo: "2027-12-31",
+      taxRegime: "no_responsable_iva",
+    },
+  }
+  const openInvoice = async () => {
+    renderTable(<CompletedOrdersTable selectedDate={DAY} />)
+    await waitFor(() => expect(screen.getByText("#11111111")).toBeInTheDocument())
+    await act(async () => {
+      screen.getByRole("button", { name: /Factura/i }).click()
+    })
+    await waitFor(() => expect(screen.getByText("Factura:")).toBeInTheDocument())
+  }
+
+  it("shows the number and the DIAN data stored with the payment", async () => {
+    getOrdersByDate.mockResolvedValue([paidOrder({ ledgerPayment })])
+    await openInvoice()
+    expect(screen.getByText("Factura:").nextElementSibling).toHaveTextContent("POS-000042")
+    expect(screen.getAllByText("NO RESPONSABLE DE IVA").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("VIGENTE HASTA 31/12/2027").length).toBeGreaterThan(0)
+  })
+
+  it("keeps the old label for an order paid before numbering", async () => {
+    await openInvoice()
+    expect(screen.getByText("Factura:").nextElementSibling).toHaveTextContent("11111111")
+    expect(screen.queryByText(/DIAN/)).toBeNull()
+  })
+})

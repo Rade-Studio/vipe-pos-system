@@ -76,6 +76,10 @@ export interface PaymentRow {
   idempotencyKey: string
   createdAt: string
   tenders: PaymentTenderLine[]
+  /** H-014 / S2: the stored invoice number (reprints show it); null before numbering existed. */
+  invoiceNumber?: string | null
+  /** DIAN data in force when charged. */
+  invoiceFiscal?: import('./invoice-fiscal').InvoiceFiscal | null
 }
 
 /**

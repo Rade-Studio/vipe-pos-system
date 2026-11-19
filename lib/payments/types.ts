@@ -155,6 +155,12 @@ export interface PayOrderResult {
   /** Convenience mirror of `status === 'already_paid'`. */
   alreadyPaid: boolean
   tenders: PayOrderTenderEcho[]
+  /** H-014 / S2: number assigned when charged (POS-000123); a replay returns the stored one. */
+  invoiceNumber?: string | null
+  /** DIAN data in force when charged. */
+  invoiceFiscal?: import('./invoice-fiscal').InvoiceFiscal | null
+  /** Warn only: the payment is registered. */
+  invoiceWarnings?: import('./invoice-fiscal').InvoiceWarning[]
 }
 
 export interface OrderBillSummary {

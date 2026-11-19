@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { z } from 'zod';
+import { INVOICE_WARNINGS, InvoiceFiscal, type InvoiceWarning } from './invoice-numbering';
 import { StaffRef } from '../audit/audit.dto';
 import { OTHER_TEXT_ISSUE, requireOtherText, VOID_REASON_CODES, VOID_REASONS, voidReasonFields, type VoidReason } from '../audit/voids';
 import { guidListQuery } from '../common/validation';
@@ -143,6 +144,20 @@ export class PayOrderResult {
   @ApiProperty({ description: 'Warn only: the change exceeds the cash in the drawer.' }) drawerWarning!: boolean;
   @ApiProperty() drawerCashBefore!: number;
   @ApiProperty({ type: [PayOrderTenderEcho] }) tenders!: PayOrderTenderEcho[];
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'Invoice number assigned when charged (POS-000123); a replay returns the stored one. null only for a payment made before numbering existed.',
+  })
+  invoiceNumber!: string | null;
+  @ApiProperty({ type: InvoiceFiscal, nullable: true, description: 'DIAN data in force when charged (printed on the invoice).' })
+  invoiceFiscal!: InvoiceFiscal | null;
+  @ApiProperty({
+    enum: INVOICE_WARNINGS,
+    isArray: true,
+    description: 'Warn only, the payment is registered: range_ending / range_exceeded (authorized range), resolution_expiring (30 days or less) / resolution_expired.',
+  })
+  invoiceWarnings!: InvoiceWarning[];
 }
 
 export class PaymentTender {
@@ -170,6 +185,10 @@ export class Payment {
   @ApiProperty({ format: 'uuid' }) idempotencyKey!: string;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
   @ApiProperty({ type: [PaymentTender], description: 'By lineNo.' }) tenders!: PaymentTender[];
+  @ApiProperty({ type: String, nullable: true, description: 'Stored invoice number (reprints show it); null before numbering existed.' })
+  invoiceNumber!: string | null;
+  @ApiProperty({ type: InvoiceFiscal, nullable: true, description: 'DIAN data in force when charged.' })
+  invoiceFiscal!: InvoiceFiscal | null;
 }
 
 /** A row of the read-only legacy `payment_transactions` history (before pay_order). */

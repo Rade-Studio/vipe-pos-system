@@ -48,6 +48,30 @@ const cutoffHour = (value: string) => {
   return Number.isInteger(parsed) && parsed >= 0 && parsed <= 6 ? parsed : 4;
 };
 
+/** H-014 / S2 (T12): the invoice prefix, uppercase letters and digits (POS-000123). */
+export const INVOICE_PREFIX = /^[A-Z0-9]{1,10}$/;
+/** The resolution reaches raw ESC/POS output: letters, digits, spaces and - . / only (no control bytes). */
+export const INVOICE_RESOLUTION = /^[\p{L}\p{N} ./-]*$/u;
+export const INVOICE_RESOLUTION_MESSAGE = 'La resolución solo lleva letras, números, espacios y los signos - . /';
+/** Tax regimes printed on the invoice. */
+export const TAX_REGIMES = ['responsable_iva', 'no_responsable_iva', 'regimen_simple'] as const;
+export type TaxRegime = (typeof TAX_REGIMES)[number];
+/** Printed name of each tax regime. */
+export const TAX_REGIME_NAMES: Record<TaxRegime, string> = {
+  responsable_iva: 'Responsable de IVA',
+  no_responsable_iva: 'No responsable de IVA',
+  regimen_simple: 'Régimen Simple de Tributación',
+};
+/** The largest consecutive the stored value admits (12 digits, CHECK of 0043). */
+const MAX_INVOICE_NUMBER = 999_999_999_999;
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+/** '' (not set) or anything unreadable is null. */
+const optionalText = (value: string) => (value.trim().length > 0 ? value.trim() : null);
+const prefix = (value: string) => (INVOICE_PREFIX.test(value) ? value : 'POS');
+const positive = (value: string) => (/^[1-9][0-9]{0,11}$/.test(value) ? Number(value) : null);
+const isoDate = (value: string) => (ISO_DATE.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) ? value : null);
+const taxRegime = (value: string): TaxRegime | null => ((TAX_REGIMES as readonly string[]).includes(value) ? (value as TaxRegime) : null);
+
 export const CONFIG_KEYS = {
   taxPercentage: { key: 'tax_percentage', fallback: 10, read: (v: string) => number(v, 10) },
   tipPercentage: { key: 'tip_percentage', fallback: 10, read: (v: string) => number(v, 10) },
@@ -74,6 +98,19 @@ export const CONFIG_KEYS = {
   businessDayCutoffHour: { key: 'business_day_cutoff_hour', fallback: 4, read: cutoffHour },
   /** S9 (caja-cierres): INC (default, impuesto nacional al consumo) | IVA; labels bills, slips and the Z. */
   taxType: { key: 'tax_type', fallback: 'INC' as TaxType, read: taxType },
+  /** H-014 / S2: prefix of the invoice consecutive (default POS). */
+  invoicePrefix: { key: 'invoice_prefix', fallback: 'POS', read: prefix },
+  /** DIAN resolution number; null when not configured. */
+  invoiceResolution: { key: 'invoice_resolution', fallback: null as string | null, read: optionalText },
+  /** First number of the authorized range; the consecutive never starts below it (default 1). */
+  invoiceRangeFrom: { key: 'invoice_range_from', fallback: 1, read: (v: string) => positive(v) ?? 1 },
+  /** Last number of the authorized range; null when not configured. */
+  invoiceRangeTo: { key: 'invoice_range_to', fallback: null as number | null, read: positive },
+  /** Validity of the resolution, YYYY-MM-DD; null when not configured. */
+  invoiceValidFrom: { key: 'invoice_valid_from', fallback: null as string | null, read: isoDate },
+  invoiceValidTo: { key: 'invoice_valid_to', fallback: null as string | null, read: isoDate },
+  /** Tax regime printed on the invoice; null when not configured (nothing is printed). */
+  taxRegime: { key: 'tax_regime', fallback: null as TaxRegime | null, read: taxRegime },
 } as const;
 
 export type ConfigField = keyof typeof CONFIG_KEYS;
@@ -81,6 +118,11 @@ export type ConfigField = keyof typeof CONFIG_KEYS;
 const percentage = z.number().min(0).max(100);
 const shortText = z.string().max(255);
 const lateMinutes = z.number().int().min(1).max(240);
+const invoiceNumber = z.number().int().min(1).max(MAX_INVOICE_NUMBER);
+const calendarDate = z
+  .string()
+  .regex(ISO_DATE, 'Usa el formato AAAA-MM-DD')
+  .refine((value) => isoDate(value) !== null && new Date(`${value}T00:00:00Z`).toISOString().startsWith(value), 'La fecha no existe');
 
 export const updateConfigSchema = z.strictObject({
   taxPercentage: percentage.optional(),
@@ -100,7 +142,20 @@ export const updateConfigSchema = z.strictObject({
   desktopUpdateChannel: z.enum(DESKTOP_UPDATE_CHANNELS).optional(),
   businessDayCutoffHour: z.number().int().min(0).max(6).optional(),
   taxType: z.enum(TAX_TYPES).optional(),
+  invoicePrefix: z.string().regex(INVOICE_PREFIX, 'El prefijo lleva de 1 a 10 letras mayúsculas o números, sin espacios ni guiones').optional(),
+  invoiceResolution: z.string().trim().max(60).regex(INVOICE_RESOLUTION, INVOICE_RESOLUTION_MESSAGE).nullable().optional(),
+  invoiceRangeFrom: invoiceNumber.optional(),
+  invoiceRangeTo: invoiceNumber.nullable().optional(),
+  invoiceValidFrom: calendarDate.nullable().optional(),
+  invoiceValidTo: calendarDate.nullable().optional(),
+  taxRegime: z.enum(TAX_REGIMES).nullable().optional(),
 });
+
+export const INVOICE_RANGE_MESSAGE = 'El número final del rango autorizado debe ser mayor o igual al inicial';
+export const INVOICE_VALIDITY_MESSAGE = 'La fecha final de la vigencia debe ser igual o posterior a la inicial';
+
+/** The stored text of a value: null clears the key (''), a trimmed empty text too. */
+export const storedValue = (value: unknown) => (value === null ? '' : String(value));
 
 /** Typed config built from the stored rows; missing or unreadable keys take the default. */
 export function configFromRows(rows: readonly { key: string; value: string }[]): BusinessConfig {
@@ -166,6 +221,20 @@ export class BusinessConfig {
       'Tipo de impuesto: INC (impuesto nacional al consumo, what restaurants usually charge) or IVA. Labels bills, slips and the informe Z with taxPercentage; changing it never changes taxPercentage.',
   })
   taxType!: TaxType;
+  @ApiProperty({ default: 'POS', pattern: '^[A-Z0-9]{1,10}$', description: 'Prefijo de la factura: the invoice number is prefix-consecutive (POS-000123).' })
+  invoicePrefix!: string;
+  @ApiProperty({ type: String, nullable: true, default: null, description: 'Número de resolución DIAN; printed on the invoice when set.' })
+  invoiceResolution!: string | null;
+  @ApiProperty({ default: 1, type: 'integer', description: 'First number of the authorized range; the consecutive never starts below it.' })
+  invoiceRangeFrom!: number;
+  @ApiProperty({ type: 'integer', nullable: true, default: null, description: 'Last number of the authorized range; a payment past it is warned, never blocked.' })
+  invoiceRangeTo!: number | null;
+  @ApiProperty({ type: String, format: 'date', nullable: true, default: null, description: 'Start of the resolution validity.' })
+  invoiceValidFrom!: string | null;
+  @ApiProperty({ type: String, format: 'date', nullable: true, default: null, description: 'End of the resolution validity; a payment after it is warned, never blocked.' })
+  invoiceValidTo!: string | null;
+  @ApiProperty({ enum: TAX_REGIMES, nullable: true, default: null, description: 'Régimen tributario printed on the invoice; null prints none.' })
+  taxRegime!: TaxRegime | null;
 }
 
 export class UpdateBusinessConfigRequest {
@@ -186,4 +255,13 @@ export class UpdateBusinessConfigRequest {
   @ApiPropertyOptional({ enum: DESKTOP_UPDATE_CHANNELS }) desktopUpdateChannel?: DesktopUpdateChannel;
   @ApiPropertyOptional({ minimum: 0, maximum: 6, type: 'integer' }) businessDayCutoffHour?: number;
   @ApiPropertyOptional({ enum: TAX_TYPES }) taxType?: TaxType;
+  @ApiPropertyOptional({ pattern: '^[A-Z0-9]{1,10}$' }) invoicePrefix?: string;
+  @ApiPropertyOptional({ type: String, nullable: true, maxLength: 60, description: 'null clears it.' }) invoiceResolution?: string | null;
+  @ApiPropertyOptional({ minimum: 1, type: 'integer' }) invoiceRangeFrom?: number;
+  @ApiPropertyOptional({ minimum: 1, type: 'integer', nullable: true, description: 'Must be >= invoiceRangeFrom (the sent or the stored one); null clears it.' })
+  invoiceRangeTo?: number | null;
+  @ApiPropertyOptional({ type: String, format: 'date', nullable: true }) invoiceValidFrom?: string | null;
+  @ApiPropertyOptional({ type: String, format: 'date', nullable: true, description: 'Must be >= invoiceValidFrom; null clears it.' })
+  invoiceValidTo?: string | null;
+  @ApiPropertyOptional({ enum: TAX_REGIMES, nullable: true, description: 'null clears it.' }) taxRegime?: TaxRegime | null;
 }

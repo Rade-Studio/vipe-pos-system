@@ -28,6 +28,7 @@ import type {
 import { serverBill } from "@/lib/payments/bill"
 import { buildPayOrderTenders, zeroTotalTenders } from "@/lib/payments/tenders"
 import { invoiceTendersFromPayOrder, legacyInvoiceFields } from "@/lib/payments/invoice-tenders"
+import { fiscalLines, invoiceWarningMessages } from "@/lib/payments/invoice-fiscal"
 import { newIdempotencyKey } from "@/lib/payments/idempotency"
 import { computeSurplusAsTip, initialPaymentDraft, paymentDraftReducer, selectView } from "@/lib/payments/draft"
 import type { PaymentDraftAction, PaymentDraftState } from "@/lib/payments/draft"
@@ -508,6 +509,10 @@ export function PaymentPanel({
       if (result.drawerWarning) {
         toast.warning("La caja no tenía efectivo suficiente para el cambio; registra el ingreso de efectivo")
       }
+      // H-014 / S2: the range or the resolution needs attention; the payment is registered.
+      for (const message of invoiceWarningMessages(result.invoiceWarnings, result.invoiceFiscal, result.invoiceNumber)) {
+        toast.warning(message)
+      }
 
       // The invoice tenders come from the server's `payOrder` echo (resolved
       // through the catalog by `code`), not from the client view, so they match
@@ -532,7 +537,8 @@ export function PaymentPanel({
       const legacy = legacyInvoiceFields(invoiceTenders)
 
       const invoice: PrintableInvoice = {
-        invoiceNumber: `INV-${orderId.substring(0, 8)}`,
+        // H-014 / S2: the consecutive the server assigned (the old label only for a payment made before it).
+        invoiceNumber: result.invoiceNumber ?? `INV-${orderId.substring(0, 8)}`,
         date: new Date(),
         businessInfo: {
           name: businessName,
@@ -563,6 +569,7 @@ export function PaymentPanel({
         tenders: invoiceTenders,
         change: legacy.cashChange,
         ...(delivery ? { delivery: buildDeliveryPrintInfo(delivery) } : {}),
+        fiscalLines: fiscalLines(result.invoiceFiscal),
       }
       if (invoiceTenders.length === 1) {
         log.info("Pago con método único:", { method: invoiceTenders[0]!.methodName })

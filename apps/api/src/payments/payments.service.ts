@@ -17,6 +17,7 @@ import {
   type UndoSplitResult,
   type voidPaymentSchema,
 } from './payments.dto';
+import { invoiceWarnings, toInvoiceFiscal } from './invoice-numbering';
 import { paymentJson, toPayment, toPaymentVoid, toPayOrderResult, toSplitResult, toUndoSplitResult } from './payments.mappers';
 
 type Json = Record<string, unknown>;
@@ -70,7 +71,28 @@ export class PaymentsService {
     const result = await this.rpc(sql`
       SELECT public.pay_order(${input.orderId}::uuid, ${input.cashRegisterId}::uuid, ${input.tipAmount}::bigint,
                               ${JSON.stringify(tenders)}::jsonb, ${input.idempotencyKey}::uuid) AS result`);
-    return toPayOrderResult(result);
+    return toPayOrderResult(result, await this.invoiceOf(String(result.payment_id)));
+  }
+
+  /**
+   * H-014 / S2: the number the trigger stored on the payment (also on a
+   * replay), its fiscal snapshot and the warn-only notices for the
+   * restaurant's local date.
+   */
+  private async invoiceOf(paymentId: string) {
+    const { rows } = await this.uow.db.execute(sql`
+      SELECT p.invoice_number, p.invoice_seq, p.invoice_fiscal,
+             to_char((now() AT TIME ZONE r.timezone)::date, 'YYYY-MM-DD') AS today
+        FROM public.payments p JOIN public.restaurants r ON r.id = p.restaurant_id
+       WHERE p.id = ${paymentId}::uuid`);
+    const row = rows[0] as { invoice_number: string | null; invoice_seq: string | number | null; invoice_fiscal: unknown; today: string } | undefined;
+    const invoiceFiscal = toInvoiceFiscal(row?.invoice_fiscal);
+    const seq = row?.invoice_seq == null ? null : Number(row.invoice_seq);
+    return {
+      invoiceNumber: row?.invoice_number ?? null,
+      invoiceFiscal,
+      invoiceWarnings: row ? invoiceWarnings(seq, invoiceFiscal, row.today) : [],
+    };
   }
 
   /**

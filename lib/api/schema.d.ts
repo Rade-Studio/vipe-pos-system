@@ -3903,6 +3903,44 @@ export interface components {
              * @enum {string}
              */
             taxType: "INC" | "IVA";
+            /**
+             * @description Prefijo de la factura: the invoice number is prefix-consecutive (POS-000123).
+             * @default POS
+             */
+            invoicePrefix: string;
+            /**
+             * @description Número de resolución DIAN; printed on the invoice when set.
+             * @default null
+             */
+            invoiceResolution: string | null;
+            /**
+             * @description First number of the authorized range; the consecutive never starts below it.
+             * @default 1
+             */
+            invoiceRangeFrom: number;
+            /**
+             * @description Last number of the authorized range; a payment past it is warned, never blocked.
+             * @default null
+             */
+            invoiceRangeTo: number | null;
+            /**
+             * Format: date
+             * @description Start of the resolution validity.
+             * @default null
+             */
+            invoiceValidFrom: string | null;
+            /**
+             * Format: date
+             * @description End of the resolution validity; a payment after it is warned, never blocked.
+             * @default null
+             */
+            invoiceValidTo: string | null;
+            /**
+             * @description Régimen tributario printed on the invoice; null prints none.
+             * @default null
+             * @enum {string|null}
+             */
+            taxRegime: "responsable_iva" | "no_responsable_iva" | "regimen_simple" | null;
         };
         UpdateBusinessConfigRequest: {
             taxPercentage?: number;
@@ -3926,6 +3964,24 @@ export interface components {
             businessDayCutoffHour?: number;
             /** @enum {string} */
             taxType?: "INC" | "IVA";
+            invoicePrefix?: string;
+            /** @description null clears it. */
+            invoiceResolution?: string | null;
+            invoiceRangeFrom?: number;
+            /** @description Must be >= invoiceRangeFrom (the sent or the stored one); null clears it. */
+            invoiceRangeTo?: number | null;
+            /** Format: date */
+            invoiceValidFrom?: string | null;
+            /**
+             * Format: date
+             * @description Must be >= invoiceValidFrom; null clears it.
+             */
+            invoiceValidTo?: string | null;
+            /**
+             * @description null clears it.
+             * @enum {string|null}
+             */
+            taxRegime?: "responsable_iva" | "no_responsable_iva" | "regimen_simple" | null;
         };
         StaffRef: {
             /**
@@ -4094,6 +4150,20 @@ export interface components {
             /** @description Manual reference of a non-cash line; null when none. */
             reference: string | null;
         };
+        InvoiceFiscal: {
+            /** @description Prefix used for the number. */
+            prefix: string;
+            /** @description DIAN resolution number; null when it was not configured. */
+            resolution: string | null;
+            rangeFrom: number;
+            rangeTo: number | null;
+            /** Format: date */
+            validFrom: string | null;
+            /** Format: date */
+            validTo: string | null;
+            /** @enum {string|null} */
+            taxRegime: "responsable_iva" | "no_responsable_iva" | "regimen_simple" | null;
+        };
         Payment: {
             /** Format: uuid */
             id: string;
@@ -4113,6 +4183,10 @@ export interface components {
             createdAt: string;
             /** @description By lineNo. */
             tenders: components["schemas"]["PaymentTender"][];
+            /** @description Stored invoice number (reprints show it); null before numbering existed. */
+            invoiceNumber: string | null;
+            /** @description DIAN data in force when charged. */
+            invoiceFiscal: components["schemas"]["InvoiceFiscal"] | null;
         };
         LegacyPaymentTransaction: {
             /** Format: uuid */
@@ -4915,6 +4989,12 @@ export interface components {
             drawerWarning: boolean;
             drawerCashBefore: number;
             tenders: components["schemas"]["PayOrderTenderEcho"][];
+            /** @description Invoice number assigned when charged (POS-000123); a replay returns the stored one. null only for a payment made before numbering existed. */
+            invoiceNumber: string | null;
+            /** @description DIAN data in force when charged (printed on the invoice). */
+            invoiceFiscal: components["schemas"]["InvoiceFiscal"] | null;
+            /** @description Warn only, the payment is registered: range_ending / range_exceeded (authorized range), resolution_expiring (30 days or less) / resolution_expired. */
+            invoiceWarnings: ("range_ending" | "range_exceeded" | "resolution_expiring" | "resolution_expired")[];
         };
         VoidPaymentRequest: {
             /**

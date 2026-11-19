@@ -133,6 +133,10 @@ describe('cashier shift endpoints (Testcontainers, vipe_api)', () => {
         drawerWarning: false,
         drawerCashBefore: 20000,
         tenders: [{ lineNo: 1, methodCode: 'cash', amount: 11000, cashReceived: 20000 }],
+        // H-014 / S2 (0043): every payment now carries its invoice number and fiscal snapshot.
+        invoiceNumber: expect.stringMatching(/^POS-\d{6}$/),
+        invoiceFiscal: { prefix: 'POS', resolution: null, rangeFrom: 1, rangeTo: null, validFrom: null, validTo: null, taxRegime: null },
+        invoiceWarnings: [],
       });
       expect(await storedTenders(s.o1)).toEqual([{ line_no: 1, method_code: 'cash', amount: 11000, cash_received: 20000, reference: null }]);
     });

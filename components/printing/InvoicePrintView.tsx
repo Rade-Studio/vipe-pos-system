@@ -403,10 +403,10 @@ export function InvoicePrintView({
                       {`Hoy ahorraste ${formatCurrency(totalDiscounts)}`}
                     </p>
                   )}
-                  <p>RÉGIMEN SIMPLIFICADO</p>
-                  <p>RESOLUCIÓN DIAN No. 18764000001</p>
-                  <p>DEL 01/01/2023 AL 31/12/2023</p>
-                  <p>NUMERACIÓN: 1 AL 1000</p>
+                  {/* H-014 / S2: the DIAN data stored with the payment (Ajustes), none when not configured. */}
+                  {(invoice.fiscalLines ?? []).map((line, i) => (
+                    <p key={i}>{line}</p>
+                  ))}
                   <p className="font-medium mt-2 dark:text-gray-300">¡Gracias por su compra!</p>
                   <p>Vuelva pronto</p>
                 </div>
@@ -542,6 +542,7 @@ export function InvoicePrintView({
                   delivery,
                   ...(takeaway ?? {}),
                   taxType,
+                  fiscalLines: invoice.fiscalLines,
                 },
                 displayItems,
               }) : { lines: [] }).lines.map((line, i) => (
