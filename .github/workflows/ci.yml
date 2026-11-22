@@ -205,7 +205,7 @@ jobs:
       packages: write
     env:
       TARGET: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
-      TARGET_URL: ${{ github.ref == 'refs/heads/main' && 'https://vipepos.radestudio.org' || 'https://vipe-staging.212.56.33.197.sslip.io' }}
+      TARGET_URL: ${{ github.ref == 'refs/heads/main' && 'https://vipepos.radestudio.org' || 'https://vipe-staging.radestudio.org' }}
 
     steps:
       # The image job pushes only :<sha>. The branch tag (:dev or :main) that

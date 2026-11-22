@@ -118,7 +118,7 @@ fn updates_install_only_out_of_service() {
 #[test]
 fn default_settings_match_the_first_run_shape() {
     let d = default_settings();
-    assert_eq!(d["webUrl"], "https://vipe-staging.212.56.33.197.sslip.io");
+    assert_eq!(d["webUrl"], "https://vipe-staging.radestudio.org");
     assert_eq!(d["setup"]["step"], "welcome");
     assert_eq!(d["setup"]["maxStep"], 1);
     assert_eq!(d["printers"], json!([]));

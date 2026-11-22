@@ -9,7 +9,7 @@ use chrono::NaiveDateTime;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-pub const DEFAULT_WEB_URL: &str = "https://vipe-staging.212.56.33.197.sslip.io";
+pub const DEFAULT_WEB_URL: &str = "https://vipe-staging.radestudio.org";
 pub const UPDATER_ENDPOINT_TEMPLATE: &str = "https://<api>/api/desktop/updates/{{target}}/{{current_version}}";
 /// No update is installed within this long after a print.
 pub const QUIET_MS: i64 = 10 * 60_000;

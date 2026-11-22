@@ -4,7 +4,7 @@ import { DEMO_RESTAURANT } from '../api/mock';
 import { freshProgress } from '../setup/flow';
 import type { DiscoveredPrinter, HistoryItem, LocalPrinter, QueueItem, StationSettings } from './types';
 
-export const DEFAULT_WEB_URL = 'https://vipe-staging.212.56.33.197.sslip.io';
+export const DEFAULT_WEB_URL = 'https://vipe-staging.radestudio.org';
 
 export const DEMO_DISCOVERED: DiscoveredPrinter[] = [
   { id: 'usb-USB001', model: 'EPSON TM-T20III', connection: 'usb', address: 'EPSON TM-T20III Receipt', detail: 'puerto USB001 · con cajón de dinero', paperMm: 80, hasDrawer: true, suggestedName: 'Caja principal' },
