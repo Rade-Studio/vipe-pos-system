@@ -5,7 +5,7 @@
   "local": false,
   "webviews": ["vipe"],
   "remote": {
-    "urls": ["https://vipe-staging.212.56.33.197.sslip.io/*", "https://vipepos.radestudio.org/*"]
+    "urls": ["https://vipe-staging.radestudio.org/*", "https://vipepos.radestudio.org/*"]
   },
   "permissions": ["allow-station-status"]
 }
