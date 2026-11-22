@@ -10,6 +10,9 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 pub const DEFAULT_WEB_URL: &str = "https://vipe-staging.radestudio.org";
+/// Former default web URLs that no longer answer. A station that saved one on
+/// first run is moved to `DEFAULT_WEB_URL`, keeping any path after the origin.
+pub const RETIRED_WEB_URLS: &[&str] = &["https://vipe-staging.212.56.33.197.sslip.io"];
 pub const UPDATER_ENDPOINT_TEMPLATE: &str = "https://<api>/api/desktop/updates/{{target}}/{{current_version}}";
 /// No update is installed within this long after a print.
 pub const QUIET_MS: i64 = 10 * 60_000;
@@ -64,6 +67,22 @@ pub struct Settings {
 
 fn default_web_url() -> String {
     DEFAULT_WEB_URL.into()
+}
+
+/// Rewrites a saved `webUrl` that points at a retired origin. Returns whether it changed.
+pub fn migrate_retired_web_url(settings: &mut Value) -> bool {
+    let Some(url) = settings.get("webUrl").and_then(Value::as_str) else {
+        return false;
+    };
+    for retired in RETIRED_WEB_URLS {
+        if let Some(rest) = url.strip_prefix(retired) {
+            if rest.is_empty() || rest.starts_with('/') {
+                settings["webUrl"] = Value::String(format!("{DEFAULT_WEB_URL}{rest}"));
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// First-run settings (same shape as `StationSettings` in desktop/app/src/bridge/types.ts).

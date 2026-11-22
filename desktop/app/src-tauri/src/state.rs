@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use vipe_desktop_core::queue::{Queue, RetryPolicy};
-use vipe_desktop_core::station::{default_settings, Settings};
+use vipe_desktop_core::station::{default_settings, migrate_retired_web_url, Settings};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct PrinterState {
@@ -39,6 +39,17 @@ impl AppState {
             .and_then(|s| serde_json::from_str::<Value>(&s).ok())
             .map(merge_defaults)
             .unwrap_or_else(default_settings);
+        let mut settings = settings;
+        if migrate_retired_web_url(&mut settings) {
+            // Persist it so the panel and the next start read the new URL too.
+            // Same atomic write as save_settings; on failure the in-memory value still applies.
+            if let Ok(text) = serde_json::to_string_pretty(&settings) {
+                let tmp = dir.join("settings.json.tmp");
+                if std::fs::write(&tmp, text).is_ok() {
+                    let _ = std::fs::rename(&tmp, dir.join("settings.json"));
+                }
+            }
+        }
         let queue = Queue::open(&dir.join("queue.sqlite"), RetryPolicy::default()).map_err(|e| e.to_string())?;
         Ok(AppState {
             dir,
