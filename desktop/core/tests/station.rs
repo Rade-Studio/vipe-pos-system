@@ -5,8 +5,8 @@ use serde_json::json;
 use vipe_desktop_core::escpos::{drawer_pulse, FULL_CUT};
 use vipe_desktop_core::jobs::PrintJob;
 use vipe_desktop_core::station::{
-    connection_of, default_settings, idle_for_update, job_bytes, job_summary, printers_for_job, updater_endpoint, Settings,
-    UPDATER_ENDPOINT_TEMPLATE,
+    connection_of, default_settings, idle_for_update, job_bytes, job_summary, migrate_retired_web_url, printers_for_job,
+    updater_endpoint, Settings, DEFAULT_WEB_URL, UPDATER_ENDPOINT_TEMPLATE,
 };
 use vipe_desktop_core::transport::Connection;
 
@@ -124,4 +124,54 @@ fn default_settings_match_the_first_run_shape() {
     assert_eq!(d["printers"], json!([]));
     let parsed: Settings = serde_json::from_value(d).unwrap();
     assert!(parsed.device_token.is_none());
+}
+
+#[test]
+fn a_saved_retired_staging_url_moves_to_the_current_one() {
+    for (saved, expected) in [
+        ("https://vipe-staging.212.56.33.197.sslip.io", "https://vipe-staging.radestudio.org"),
+        ("https://vipe-staging.212.56.33.197.sslip.io/", "https://vipe-staging.radestudio.org/"),
+        ("https://vipe-staging.212.56.33.197.sslip.io/caja", "https://vipe-staging.radestudio.org/caja"),
+    ] {
+        let mut s = json!({"webUrl": saved, "deviceToken": "vdt_x", "printers": []});
+        assert!(migrate_retired_web_url(&mut s), "{saved} should be migrated");
+        assert_eq!(s["webUrl"], expected);
+        assert_eq!(s["deviceToken"], "vdt_x", "other settings stay");
+    }
+}
+
+#[test]
+fn other_saved_urls_are_left_alone() {
+    for saved in [
+        "https://vipepos.radestudio.org",
+        "https://vipe-staging.radestudio.org",
+        "http://192.168.1.10:3000",
+        // Same prefix, different host: only the exact retired origin moves.
+        "https://vipe-staging.212.56.33.197.sslip.io.example.com",
+    ] {
+        let mut s = json!({"webUrl": saved});
+        assert!(!migrate_retired_web_url(&mut s), "{saved} should not be migrated");
+        assert_eq!(s["webUrl"], saved);
+    }
+    let mut no_url = json!({"printers": []});
+    assert!(!migrate_retired_web_url(&mut no_url));
+    assert_eq!(no_url, json!({"printers": []}));
+}
+
+#[test]
+fn the_default_web_url_may_read_the_station_status() {
+    let capability: serde_json::Value =
+        serde_json::from_str(include_str!("../../app/src-tauri/capabilities/remote.json")).unwrap();
+    let allowed: Vec<&str> =
+        capability["remote"]["urls"].as_array().unwrap().iter().map(|u| u.as_str().unwrap()).collect();
+    let pattern = format!("{DEFAULT_WEB_URL}/*");
+    assert!(allowed.contains(&pattern.as_str()), "{pattern} missing from remote.json: {allowed:?}");
+}
+
+#[test]
+fn the_web_and_native_default_urls_agree() {
+    let ts = include_str!("../../app/src/bridge/demoData.ts");
+    let line = ts.lines().find(|l| l.starts_with("export const DEFAULT_WEB_URL")).expect("DEFAULT_WEB_URL in demoData.ts");
+    let value = line.split('\'').nth(1).expect("quoted URL");
+    assert_eq!(value, DEFAULT_WEB_URL);
 }
